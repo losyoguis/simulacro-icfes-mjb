@@ -80,6 +80,7 @@ const ACTIVE_WORK_MODE = "simulacro";
 const DISABLED_WORK_MODES = new Set(["practica", "ai-studio", "entrenamiento"]);
 const SECURE_EXAM_MAX_WARNINGS = 3;
 const SECURE_EXAM_COOLDOWN_MS = 1800;
+const SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS = 350;
 
 function normalizeWorkMode() {
   return ACTIVE_WORK_MODE;
@@ -196,6 +197,11 @@ function getSecureTotalAwayMs(secure = ensureSecureExamState()) {
 function requestSecureExamFullscreen() {
   const secure = ensureSecureExamState();
   const target = document.documentElement;
+  if (document.fullscreenElement) {
+    secure.fullscreenRequested = true;
+    secure.fullscreenBlocked = false;
+    return Promise.resolve(true);
+  }
   if (!target || typeof target.requestFullscreen !== "function" || !document.fullscreenEnabled) {
     secure.fullscreenAvailable = false;
     secure.fullscreenBlocked = true;
@@ -206,19 +212,54 @@ function requestSecureExamFullscreen() {
     });
     saveState();
     updateSecureExamBadge();
-    return;
+    return Promise.resolve(false);
   }
 
   secure.fullscreenRequested = true;
-  target.requestFullscreen().catch(() => {
-    secure.fullscreenBlocked = true;
-    secure.events.push({
-      at: new Date().toISOString(),
-      type: "system",
-      description: "El estudiante debe permitir pantalla completa para presentar en modo seguro."
+  secure.fullscreenAvailable = true;
+  return target.requestFullscreen()
+    .then(() => {
+      secure.fullscreenBlocked = false;
+      saveState();
+      updateSecureExamBadge();
+      return true;
+    })
+    .catch(() => {
+      secure.fullscreenBlocked = true;
+      secure.events.push({
+        at: new Date().toISOString(),
+        type: "system",
+        description: "El estudiante debe permitir pantalla completa para presentar en modo seguro."
+      });
+      saveState();
+      updateSecureExamBadge();
+      return false;
     });
-    saveState();
-    updateSecureExamBadge();
+}
+
+function shouldRestoreSecureExamFullscreen() {
+  return shouldMonitorSecureExam()
+    && ensureSecureExamState().fullscreenRequested
+    && !document.fullscreenElement
+    && document.visibilityState !== "hidden";
+}
+
+function restoreSecureExamFullscreen() {
+  if (!shouldRestoreSecureExamFullscreen()) return;
+  requestSecureExamFullscreen();
+}
+
+function promptSecureFullscreenRestore() {
+  if (!shouldRestoreSecureExamFullscreen()) return;
+  if (document.querySelector(".dialog-overlay")) return;
+  openActionDialog({
+    title: "Volver a pantalla completa",
+    message: "Para continuar el simulacro debes regresar al modo pantalla completa. Esta acción mantiene activa la seguridad de la prueba.",
+    confirmText: "Volver a pantalla completa",
+    cancelText: "Volver a pantalla completa",
+    danger: true,
+    onConfirm: restoreSecureExamFullscreen,
+    onCancel: restoreSecureExamFullscreen
   });
 }
 
@@ -270,12 +311,17 @@ function recordSecureExamEvent(type, description, options = {}) {
 function showSecureExamWarning(secure) {
   if (!shouldMonitorSecureExam()) return;
   const remaining = Math.max(SECURE_EXAM_MAX_WARNINGS - Number(secure.warnings || 0), 0);
+  const restoreFullscreen = () => {
+    if (shouldRestoreSecureExamFullscreen()) requestSecureExamFullscreen();
+  };
   openActionDialog({
     title: "Advertencia de seguridad del simulacro",
-    message: `Se detectó una salida del simulacro o cambio de pantalla. Advertencia ${secure.warnings} de ${SECURE_EXAM_MAX_WARNINGS}. ${remaining > 0 ? `Si ocurre ${remaining} vez/veces más, el intento será finalizado automáticamente.` : "El intento será revisado por el docente."}`,
-    confirmText: "Entendido",
-    cancelText: "Continuar",
-    danger: true
+    message: `Se detectó una salida del simulacro o cambio de pantalla. Advertencia ${secure.warnings} de ${SECURE_EXAM_MAX_WARNINGS}. ${remaining > 0 ? `Si ocurre ${remaining} vez/veces más, el intento será finalizado automáticamente.` : "El intento será revisado por el docente."} Para continuar debes volver a pantalla completa.`,
+    confirmText: "Entendido y volver a pantalla completa",
+    cancelText: "Volver a pantalla completa",
+    danger: true,
+    onConfirm: restoreFullscreen,
+    onCancel: restoreFullscreen
   });
 }
 
@@ -297,6 +343,7 @@ function handleSecureExamVisibilityChange() {
   } else {
     stopSecureAwayTimer();
     updateSecureExamBadge();
+    window.setTimeout(promptSecureFullscreenRestore, SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS);
   }
 }
 
@@ -310,13 +357,21 @@ function handleSecureExamBlur() {
 function handleSecureExamFocus() {
   stopSecureAwayTimer();
   updateSecureExamBadge();
+  window.setTimeout(promptSecureFullscreenRestore, SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS);
 }
 
 function handleSecureExamFullscreenChange() {
   if (!shouldMonitorSecureExam()) return;
   const secure = ensureSecureExamState();
+  if (document.fullscreenElement) {
+    secure.fullscreenBlocked = false;
+    updateSecureExamBadge();
+    saveState();
+    return;
+  }
   if (secure.fullscreenRequested && !document.fullscreenElement) {
     recordSecureExamEvent("fullscreen", "El estudiante salió de pantalla completa durante el simulacro.", { force: true });
+    window.setTimeout(promptSecureFullscreenRestore, SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS);
   }
 }
 
@@ -351,6 +406,7 @@ function openSecureExamInfoDialog(onConfirm) {
         <ul>
           <li>Se solicitará pantalla completa al iniciar cada sesión.</li>
           <li>Si cambias de pestaña, ventana o sales de pantalla completa, quedará registrado.</li>
+          <li>Cuando vuelvas al simulacro, la plataforma te pedirá regresar nuevamente a pantalla completa para continuar.</li>
           <li>Después de ${SECURE_EXAM_MAX_WARNINGS} advertencias, el intento se finalizará automáticamente.</li>
           <li>El informe final mostrará el estado del intento: normal, con advertencias o sospechoso.</li>
         </ul>
@@ -943,10 +999,11 @@ function performLogout() {
 function updateHeaderSessionButtons() {
   const loggedIn = hasValidStudent();
   if (logoutBtn) logoutBtn.classList.toggle("hidden", !loggedIn);
-  if (dashboardBtn) dashboardBtn.classList.toggle("hidden", !loggedIn);
+  // Botón Dashboard institucional desactivado en esta versión.
+  if (dashboardBtn) dashboardBtn.classList.add("hidden");
 }
 
-function openActionDialog({ title, message, confirmText = "Aceptar", cancelText = "Cancelar", danger = false, onConfirm }) {
+function openActionDialog({ title, message, confirmText = "Aceptar", cancelText = "Cancelar", danger = false, onConfirm, onCancel }) {
   closeActionDialog();
 
   const overlay = document.createElement("div");
@@ -968,6 +1025,8 @@ function openActionDialog({ title, message, confirmText = "Aceptar", cancelText 
   overlay.addEventListener("click", event => {
     if (event.target === overlay || event.target.closest("[data-dialog-cancel]") || event.target.closest(".dialog-close")) {
       closeActionDialog();
+      if (typeof onCancel === "function") onCancel();
+      return;
     }
 
     if (event.target.closest("[data-dialog-confirm]")) {

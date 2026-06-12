@@ -10141,3 +10141,12 @@ html[data-theme="dark"] .mode-preview-card span:not(.mode-preview-icon) {
 [data-theme="dark"] .security-warning-note {
   color: #fecaca;
 }
+
+
+/* Versión simulacro seguro: botones superiores desactivados */
+#tipsBtn,
+#instructionsBtn,
+#dashboardBtn {
+  display: none !important;
+  pointer-events: none !important;
+}
