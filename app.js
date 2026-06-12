@@ -33,6 +33,7 @@ const STORAGE_KEY = "simulador_icfes_saber11_estado_v2";
 const HISTORY_KEY = "simulador_icfes_saber11_historial_v2";
 const STUDENT_KEY = "simulador_icfes_saber11_estudiante_v2";
 const SUBMISSION_KEY = "simulador_icfes_saber11_envio_actual_v2";
+const REPORT_EMAIL_SENT_PREFIX = "simulador_icfes_saber11_correo_enviado_v2_";
 const NOTEBOOK_RETURN_KEY = "simulador_icfes_saber11_notebook_return_v2";
 
 // Envío automático de informes por correo y registro en Google Sheets.
@@ -81,6 +82,8 @@ let state = {
   finished: false,
   secureExam: null
 };
+
+let reportEmailInProgress = false;
 
 const ACTIVE_WORK_MODE = "simulacro";
 const DISABLED_WORK_MODES = new Set(["practica", "ai-studio", "entrenamiento"]);
@@ -2403,6 +2406,12 @@ function renderResults() {
   document.getElementById("newAttemptBtn").addEventListener("click", renderHome);
   document.getElementById("downloadPdfBtn").addEventListener("click", downloadPdfReport);
   document.getElementById("sendPdfBtn").addEventListener("click", () => sendReportEmail({ automatic: false }));
+  if (isReportEmailAlreadySent(result)) {
+    updateReportEmailStatus("El informe de este intento ya fue enviado una sola vez.", "success");
+    updateSendReportButtonSentState();
+  } else {
+    updateReportEmailStatus(getReportEmailInitialMessage(), REPORT_EMAIL_ENDPOINT ? "info" : "warning");
+  }
   const syncSheetsBtn = document.getElementById("syncSheetsBtn");
   if (syncSheetsBtn) {
     syncSheetsBtn.addEventListener("click", async () => {
@@ -2423,7 +2432,6 @@ function renderResults() {
       }
     });
   }
-  updateReportEmailStatus(getReportEmailInitialMessage());
 }
 
 function renderStatusChart(result) {
@@ -2815,7 +2823,7 @@ function getReportEmailInitialMessage() {
   if (!REPORT_EMAIL_ENDPOINT) {
     return `Envío automático pendiente de activar: pega la URL /exec de Google Apps Script en la constante REPORT_EMAIL_ENDPOINT. El informe se enviará al estudiante y a ${REPORT_INSTITUTION_EMAIL}, y quedará registrado para el análisis institucional de la ${INSTITUTION_NAME}.`;
   }
-  return `Al finalizar, el informe se envía automáticamente al estudiante con PDF adjunto y enlace de Drive, y se envía copia institucional a ${REPORT_INSTITUTION_EMAIL}. Además, Google Sheets actualiza el análisis por estudiante, grupo y área.`;
+  return `Al finalizar, el informe se envía automáticamente una sola vez al estudiante con PDF adjunto y enlace de Drive, y se envía copia institucional a ${REPORT_INSTITUTION_EMAIL}. Además, Google Sheets actualiza el análisis por estudiante, grupo y área.`;
 }
 
 function updateReportEmailStatus(message, kind = "info") {
@@ -2823,6 +2831,27 @@ function updateReportEmailStatus(message, kind = "info") {
   if (!status) return;
   status.textContent = message || "";
   status.dataset.kind = kind;
+}
+
+function getReportEmailSentKey(result) {
+  const id = result && result.submissionId ? result.submissionId : getCurrentSubmissionId();
+  return `${REPORT_EMAIL_SENT_PREFIX}${id}`;
+}
+
+function isReportEmailAlreadySent(result) {
+  return storageGet(getReportEmailSentKey(result), "") === "sent";
+}
+
+function markReportEmailAsSent(result) {
+  storageSet(getReportEmailSentKey(result), "sent");
+}
+
+function updateSendReportButtonSentState() {
+  const sendBtn = document.getElementById("sendPdfBtn");
+  if (!sendBtn) return;
+  sendBtn.disabled = true;
+  sendBtn.textContent = "Informe enviado";
+  sendBtn.title = "El informe ya fue enviado una sola vez para este intento.";
 }
 
 function getReportFileName(result) {
@@ -2873,6 +2902,17 @@ async function sendReportEmail({ automatic = false } = {}) {
   const result = buildResultData();
   const sendBtn = document.getElementById("sendPdfBtn");
 
+  if (reportEmailInProgress) {
+    updateReportEmailStatus("El informe ya se está enviando. Espera a que termine el proceso.", "info");
+    return false;
+  }
+
+  if (isReportEmailAlreadySent(result)) {
+    updateReportEmailStatus("El informe de este intento ya fue enviado. Para evitar correos duplicados, no se volverá a enviar.", "success");
+    updateSendReportButtonSentState();
+    return true;
+  }
+
   if (!REPORT_EMAIL_ENDPOINT) {
     const message = `No se pudo enviar todavía porque falta configurar la URL /exec de Google Apps Script. El informe debe enviarse al estudiante (${result.studentEmail}) y a ${REPORT_INSTITUTION_EMAIL}.`;
     updateReportEmailStatus(message, "warning");
@@ -2887,42 +2927,45 @@ async function sendReportEmail({ automatic = false } = {}) {
     return false;
   }
 
+  reportEmailInProgress = true;
+
   try {
     if (sendBtn) {
       sendBtn.disabled = true;
       sendBtn.textContent = automatic ? "Registrando..." : "Enviando...";
     }
-    updateReportEmailStatus(`Conectando con Google Sheets y registrando resultado confirmado...`, "info");
+    updateReportEmailStatus("Registrando el resultado en Google Sheets...", "info");
 
-    // Paso 1: registro liviano robusto. Se envía por POST no-cors + sendBeacon + formulario oculto
-    // a los endpoints disponibles. No depende de CORS ni de JSONP; por eso llega al Sheets.
+    // Registro liviano: se envía una sola vez por acción para evitar duplicados en el backend.
     await submitResultOnlyToAppsScript(result);
 
-    updateReportEmailStatus(`Registro confirmado en Google Sheets. Enviando detalle por pregunta al dashboard...`, "success");
+    updateReportEmailStatus("Resultado registrado. Enviando detalle por pregunta al dashboard...", "success");
     await submitDetailChunksToAppsScript(result);
 
-    updateReportEmailStatus(`Resultado y detalle enviados. Procesando PDF, Drive y correos...`, "info");
+    updateReportEmailStatus("Detalle registrado. Enviando un único correo con el PDF del informe...", "info");
 
     const pdf = createChartPdf(result);
     const payload = buildReportEmailPayload(result, pdf);
 
-    // Paso 3: envío completo con PDF. Si este proceso tarda, el resultado liviano ya fue enviado al Sheets.
+    // Envío completo: se usa un único POST oculto. No se combina con sendBeacon/fetch para evitar varios correos.
     await submitReportPayloadToAppsScript(payload);
+    markReportEmailAsSent(result);
 
-    updateReportEmailStatus(`Resultado enviado al backend institucional. Abre el dashboard y presiona “Actualizar datos” para visualizar los datos reales de ${result.studentName}.`, "success");
+    updateReportEmailStatus(`Informe enviado una sola vez y resultado registrado para ${result.studentName}.`, "success");
+    updateSendReportButtonSentState();
     return true;
   } catch (error) {
     console.error("Error enviando informe:", error);
     updateReportEmailStatus(`No fue posible completar el envío automático: ${error.message || "verifica la conexión o la URL de Apps Script"}.`, "error");
-    return false;
-  } finally {
-    if (sendBtn) {
+    if (sendBtn && !isReportEmailAlreadySent(result)) {
       sendBtn.disabled = false;
       sendBtn.textContent = "Enviar informe PDF";
     }
+    return false;
+  } finally {
+    reportEmailInProgress = false;
   }
 }
-
 
 function buildResultOnlyPayload(result) {
   return {
@@ -3016,46 +3059,16 @@ async function submitResultOnlyToAppsScript(result) {
   const payload = buildResultOnlyPayload(result);
   const directParams = buildResultOnlyDirectParams(payload);
 
-  // v11: antes de esperar confirmación, se dispara un GET liviano al endpoint oficial.
-  // Aunque el navegador no pueda leer la respuesta por políticas de Apps Script,
-  // el servidor recibe la petición y puede escribir en Google Sheets.
-  fireAndForgetDirectGetToEndpoints(directParams, REPORT_REGISTRATION_ENDPOINTS);
-
-  let confirmation;
   try {
-    confirmation = await submitParamsViaJsonpToEndpoints(directParams, REPORT_REGISTRATION_ENDPOINTS, 45000);
+    return await submitParamsViaJsonpToEndpoints(directParams, REPORT_REGISTRATION_ENDPOINTS, 45000);
   } catch (firstError) {
-    console.warn("No se confirmó el registro por GET/JSONP directo. Se intentará JSONP con payload compacto.", firstError);
-    try {
-      confirmation = await submitPayloadViaJsonpToEndpoints(payload, "registrar-resultado-liviano", REPORT_REGISTRATION_ENDPOINTS, 45000);
-    } catch (secondError) {
-      console.warn("Tampoco se confirmó JSONP compacto. Se enviará por POST/formulario oculto de respaldo.", secondError);
-      await submitPayloadViaReliablePost(payload, "registrar-resultado-liviano", {
-        endpoints: REPORT_REGISTRATION_ENDPOINTS,
-        includeHiddenForm: true,
-        waitMs: 2500
-      });
-      confirmation = { ok: true, mode: "respaldo-post-get", message: "Resultado enviado por método de respaldo. Revisa el dashboard después de unos segundos." };
-    }
-  }
-
-  if (!confirmation || confirmation.ok === false) {
-    // Último respaldo: no bloquea el flujo si ya se dispararon GET/POST al backend.
-    await submitPayloadViaReliablePost(payload, "registrar-resultado-liviano", {
+    console.warn("No se confirmó el registro por JSONP directo. Se intentará un único POST de respaldo.", firstError);
+    await submitPayloadViaSingleHiddenPost(payload, "registrar-resultado-liviano", {
       endpoints: REPORT_REGISTRATION_ENDPOINTS,
-      includeHiddenForm: true,
-      waitMs: 2500
+      waitMs: 1800
     });
-    return { ok: true, mode: "respaldo-sin-confirmacion", message: "Resultado reenviado por respaldo al endpoint oficial." };
+    return { ok: true, mode: "post-unico-respaldo", message: "Resultado enviado por POST único de respaldo." };
   }
-
-  submitPayloadViaReliablePost(payload, "registrar-resultado-liviano", {
-    endpoints: REPORT_REGISTRATION_ENDPOINTS,
-    includeHiddenForm: true,
-    waitMs: 100
-  }).catch(error => console.warn("Respaldo POST no confirmado:", error));
-
-  return confirmation;
 }
 
 async function submitDetailChunksToAppsScript(result) {
@@ -3073,9 +3086,8 @@ async function submitDetailChunksToAppsScript(result) {
       await submitParamsViaJsonpToEndpoints(params, REPORT_REGISTRATION_ENDPOINTS, 30000);
     } catch (error) {
       console.warn(`No se confirmó el lote de detalle ${i + 1}/${chunks.length} por JSONP directo. Se intentará por POST.`, error);
-      await submitPayloadViaReliablePost(payload, "registrar-detalle-preguntas", {
+      await submitPayloadViaSingleHiddenPost(payload, "registrar-detalle-preguntas", {
         endpoints: REPORT_REGISTRATION_ENDPOINTS,
-        includeHiddenForm: true,
         waitMs: 500
       });
     }
@@ -3147,9 +3159,11 @@ function buildDetailChunkDirectParams(payload) {
 }
 
 function submitReportPayloadToAppsScript(payload) {
-  // El PDF/correo se envía solo al endpoint principal para evitar correos duplicados.
-  // El resultado ya fue registrado antes en ambos endpoints disponibles.
-  return submitPayloadToAppsScriptEverywhere(payload, { lightweight: false, endpoints: [REPORT_EMAIL_ENDPOINT].filter(Boolean) });
+  // El PDF/correo se envía una sola vez al endpoint principal para evitar correos duplicados.
+  return submitPayloadViaSingleHiddenPost(payload, "enviarInforme", {
+    endpoints: [REPORT_EMAIL_ENDPOINT].filter(Boolean),
+    waitMs: 2500
+  });
 }
 
 function submitPayloadViaJsonp(payload, accion, timeoutMs = 30000) {
@@ -3252,6 +3266,19 @@ function submitParamsViaJsonp(endpoint, params, timeoutMs = 30000) {
     script.src = url.toString();
     document.body.appendChild(script);
   });
+}
+
+async function submitPayloadViaSingleHiddenPost(payload, action, options = {}) {
+  const endpoints = Array.from(new Set((options.endpoints || REPORT_EMAIL_ENDPOINTS || []).filter(Boolean)));
+  if (!endpoints.length) throw new Error("No hay endpoints de Apps Script configurados.");
+
+  const endpoint = endpoints[0];
+  const payloadText = JSON.stringify(payload);
+  const sent = tryPostHiddenFormToEndpoint(endpoint, payloadText, action);
+  if (!sent) throw new Error("No fue posible enviar el formulario oculto a Apps Script.");
+
+  await delay(options.waitMs || 1200);
+  return { ok: true, mode: "single-hidden-post" };
 }
 
 async function submitPayloadToAppsScriptEverywhere(payload, { lightweight = false, endpoints = null } = {}) {
