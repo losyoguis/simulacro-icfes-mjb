@@ -10563,7 +10563,7 @@ html[data-theme="dark"] .question-resource .reaction-chart-svg text {
   font-weight: 800;
   font-size: 0.9rem;
 }
-.security-alert-sound-btn {
+.security-alert-action-btn {
   justify-self: end;
   min-height: 50px;
   padding: 12px 18px;
@@ -10575,8 +10575,8 @@ html[data-theme="dark"] .question-resource .reaction-chart-svg text {
   cursor: pointer;
   box-shadow: 0 12px 28px rgba(69, 10, 10, 0.22);
 }
-.security-alert-sound-btn:hover,
-.security-alert-sound-btn:focus-visible {
+.security-alert-action-btn:hover,
+.security-alert-action-btn:focus-visible {
   transform: translateY(-1px);
   outline: 3px solid rgba(255, 255, 255, 0.62);
   outline-offset: 3px;
@@ -10593,7 +10593,7 @@ html[data-theme="dark"] .question-resource .reaction-chart-svg text {
     justify-items: center;
     padding: 22px 18px;
   }
-  .security-alert-sound-btn {
+  .security-alert-action-btn {
     justify-self: center;
     width: 100%;
   }

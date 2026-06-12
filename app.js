@@ -597,7 +597,7 @@ function renderSecurityFinalAlert(result) {
           <span>Estado: <strong>${escapeHtml(security.statusLabel || "Finalizado automáticamente")}</strong></span>
         </div>
       </div>
-      <button class="security-alert-sound-btn" type="button" id="securityAlertSoundBtn">🔊 Repetir alerta</button>
+      <button class="security-alert-action-btn" type="button" id="securityNewAttemptBtn">Nuevo Intento</button>
     </section>
   `;
 }
@@ -2539,9 +2539,9 @@ function renderResults() {
   document.getElementById("newAttemptBtn").addEventListener("click", renderHome);
   document.getElementById("downloadPdfBtn").addEventListener("click", downloadPdfReport);
   document.getElementById("sendPdfBtn").addEventListener("click", () => sendReportEmail({ automatic: false }));
-  const securityAlertSoundBtn = document.getElementById("securityAlertSoundBtn");
-  if (securityAlertSoundBtn) {
-    securityAlertSoundBtn.addEventListener("click", () => playSecurityFinalAlertIfNeeded(result, true));
+  const securityNewAttemptBtn = document.getElementById("securityNewAttemptBtn");
+  if (securityNewAttemptBtn) {
+    securityNewAttemptBtn.addEventListener("click", renderHome);
   }
   playSecurityFinalAlertIfNeeded(result);
   if (isReportEmailAlreadySent(result)) {
