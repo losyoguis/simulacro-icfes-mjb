@@ -1931,8 +1931,6 @@ function renderHome() {
       </div>
     </section>
 
-    ${renderAdminAccessSection()}
-
     <section class="config-bar mode-select-bar" aria-label="Configuración del simulador">
       <div class="mode-select-panel ${state.mode ? "has-mode" : "needs-mode"}">
         <div class="mode-select-head">
@@ -1970,8 +1968,6 @@ function renderHome() {
       updateModeSelectUi();
     });
   }
-  const openAdminSectionBtn = document.getElementById("openAdminSectionBtn");
-  if (openAdminSectionBtn) openAdminSectionBtn.addEventListener("click", openDashboardAccessDialog);
   updateModeSelectUi();
 
   document.getElementById("changeStudentBtn").addEventListener("click", () => {
