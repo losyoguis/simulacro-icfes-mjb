@@ -10163,3 +10163,114 @@ body.dashboard-locked .dashboard-header-actions {
 .dashboard-access-card {
   max-width: 560px;
 }
+
+/* ==========================================================
+   Compatibilidad GitHub Pages + Google Sites en pantalla completa
+   ========================================================== */
+html.embedded-google-sites,
+html.embedded-google-sites body,
+html.fullscreen-active,
+html.fullscreen-active body {
+  width: 100%;
+  min-height: 100dvh;
+}
+
+html.embedded-google-sites body {
+  overflow-x: hidden;
+}
+
+html.embedded-google-sites .app-shell {
+  width: min(100% - 18px, 1240px);
+  min-height: 100dvh;
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+html:fullscreen,
+html:-webkit-full-screen {
+  background: var(--bg);
+  overflow-y: auto;
+}
+
+html:fullscreen body,
+html:-webkit-full-screen body {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at top left, rgba(36, 85, 195, 0.16), transparent 30rem),
+    radial-gradient(circle at bottom right, rgba(4, 167, 119, 0.14), transparent 26rem),
+    var(--bg);
+}
+
+html:fullscreen .app-shell,
+html:-webkit-full-screen .app-shell {
+  width: min(100% - 28px, 1320px);
+  min-height: 100dvh;
+  padding-top: max(14px, env(safe-area-inset-top));
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+}
+
+.google-sites-fullscreen-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(36, 85, 195, 0.22);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(36, 85, 195, 0.12), rgba(4, 167, 119, 0.12)), var(--panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.google-sites-fullscreen-notice strong,
+.google-sites-fullscreen-notice span {
+  display: block;
+}
+
+.google-sites-fullscreen-notice strong {
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: clamp(1rem, 2vw, 1.16rem);
+}
+
+.google-sites-fullscreen-notice span {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.google-sites-fullscreen-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+#fullscreenBtn {
+  border-color: rgba(36, 85, 195, 0.35);
+  background: rgba(36, 85, 195, 0.09);
+}
+
+html[data-theme="dark"] .google-sites-fullscreen-notice {
+  background: linear-gradient(135deg, rgba(132, 168, 255, 0.16), rgba(55, 211, 153, 0.13)), #111e33 !important;
+  border-color: rgba(147, 197, 253, 0.32) !important;
+}
+
+html[data-theme="dark"] #fullscreenBtn {
+  background: rgba(132, 168, 255, 0.14) !important;
+  border-color: rgba(147, 197, 253, 0.36) !important;
+}
+
+@media (max-width: 720px) {
+  .google-sites-fullscreen-notice {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .google-sites-fullscreen-actions {
+    justify-content: stretch;
+  }
+
+  .google-sites-fullscreen-actions .primary-btn,
+  .google-sites-fullscreen-actions .secondary-btn {
+    width: 100%;
+  }
+}

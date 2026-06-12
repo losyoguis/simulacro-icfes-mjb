@@ -51,12 +51,14 @@ const REPORT_APP_VERSION = "ICFES-DIGITAL-SABER-11-IA-v15-notebook-sheets";
 const DASHBOARD_ACCESS_PASSWORD = "MJB-ICFES-2026";
 const DASHBOARD_ACCESS_KEY = "icfes_dashboard_institucional_autorizado_v1";
 const DASHBOARD_ACCESS_DURATION_MS = 4 * 60 * 60 * 1000;
+const GOOGLE_SITES_FULLSCREEN_NOTICE_KEY = "simulador_icfes_google_sites_fullscreen_notice_v1";
 
 
 const app = document.getElementById("app");
 const homeBtn = document.getElementById("homeBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 const themeBtn = document.getElementById("themeBtn");
+const fullscreenBtn = document.getElementById("fullscreenBtn");
 const tipsBtn = document.getElementById("tipsBtn");
 const instructionsBtn = document.getElementById("instructionsBtn");
 const dashboardBtn = document.getElementById("dashboardBtn");
@@ -201,50 +203,51 @@ function getSecureTotalAwayMs(secure = ensureSecureExamState()) {
 function requestSecureExamFullscreen() {
   const secure = ensureSecureExamState();
   const target = document.documentElement;
-  if (document.fullscreenElement) {
+  if (isFullscreenActive()) {
     secure.fullscreenRequested = true;
     secure.fullscreenBlocked = false;
+    updateFullscreenControls();
     return Promise.resolve(true);
   }
-  if (!target || typeof target.requestFullscreen !== "function" || !document.fullscreenEnabled) {
+  if (!target || !isFullscreenEnabled()) {
     secure.fullscreenAvailable = false;
     secure.fullscreenBlocked = true;
     secure.events.push({
       at: new Date().toISOString(),
       type: "system",
-      description: "El navegador o el contenedor no permitió activar pantalla completa."
+      description: "El navegador o el contenedor no permitió activar pantalla completa. Si está incrustado en Google Sites, se debe usar un iframe con allowfullscreen o abrir en pestaña nueva."
     });
     saveState();
     updateSecureExamBadge();
+    updateFullscreenControls();
+    if (isEmbeddedInFrame()) window.setTimeout(openGoogleSitesFullscreenFallback, 300);
     return Promise.resolve(false);
   }
 
   secure.fullscreenRequested = true;
   secure.fullscreenAvailable = true;
-  return target.requestFullscreen()
-    .then(() => {
-      secure.fullscreenBlocked = false;
+  return requestNativeFullscreen(target)
+    .then(ok => {
+      secure.fullscreenBlocked = !ok;
+      if (!ok) {
+        secure.events.push({
+          at: new Date().toISOString(),
+          type: "system",
+          description: "El estudiante debe permitir pantalla completa para presentar en modo seguro."
+        });
+        if (isEmbeddedInFrame()) window.setTimeout(openGoogleSitesFullscreenFallback, 300);
+      }
       saveState();
       updateSecureExamBadge();
-      return true;
-    })
-    .catch(() => {
-      secure.fullscreenBlocked = true;
-      secure.events.push({
-        at: new Date().toISOString(),
-        type: "system",
-        description: "El estudiante debe permitir pantalla completa para presentar en modo seguro."
-      });
-      saveState();
-      updateSecureExamBadge();
-      return false;
+      updateFullscreenControls();
+      return ok;
     });
 }
 
 function shouldRestoreSecureExamFullscreen() {
   return shouldMonitorSecureExam()
     && ensureSecureExamState().fullscreenRequested
-    && !document.fullscreenElement
+    && !isFullscreenActive()
     && document.visibilityState !== "hidden";
 }
 
@@ -365,15 +368,16 @@ function handleSecureExamFocus() {
 }
 
 function handleSecureExamFullscreenChange() {
+  updateFullscreenControls();
   if (!shouldMonitorSecureExam()) return;
   const secure = ensureSecureExamState();
-  if (document.fullscreenElement) {
+  if (isFullscreenActive()) {
     secure.fullscreenBlocked = false;
     updateSecureExamBadge();
     saveState();
     return;
   }
-  if (secure.fullscreenRequested && !document.fullscreenElement) {
+  if (secure.fullscreenRequested && !isFullscreenActive()) {
     recordSecureExamEvent("fullscreen", "El estudiante salió de pantalla completa durante el simulacro.", { force: true });
     window.setTimeout(promptSecureFullscreenRestore, SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS);
   }
@@ -808,6 +812,107 @@ function storageJson(key, fallback) {
   }
 }
 
+function isEmbeddedInFrame() {
+  try {
+    return window.self !== window.top;
+  } catch (error) {
+    return true;
+  }
+}
+
+function isFullscreenActive() {
+  return Boolean(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+}
+
+function isFullscreenEnabled() {
+  return Boolean(document.fullscreenEnabled || document.webkitFullscreenEnabled || document.msFullscreenEnabled);
+}
+
+function requestNativeFullscreen(target = document.documentElement) {
+  if (isFullscreenActive()) return Promise.resolve(true);
+  if (!target) return Promise.resolve(false);
+  const request = target.requestFullscreen || target.webkitRequestFullscreen || target.msRequestFullscreen;
+  if (typeof request !== "function" || !isFullscreenEnabled()) return Promise.resolve(false);
+  try {
+    const value = request.call(target);
+    if (value && typeof value.then === "function") {
+      return value.then(() => true).catch(() => false);
+    }
+    return Promise.resolve(true);
+  } catch (error) {
+    return Promise.resolve(false);
+  }
+}
+
+function getCleanAppUrl() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("volverPregunta");
+    return url.toString();
+  } catch (error) {
+    return window.location.href;
+  }
+}
+
+function openAppInNewTab() {
+  window.open(getCleanAppUrl(), "_blank", "noopener,noreferrer");
+}
+
+function updateFullscreenControls() {
+  const embedded = isEmbeddedInFrame();
+  document.documentElement.classList.toggle("embedded-google-sites", embedded);
+  document.documentElement.classList.toggle("fullscreen-active", isFullscreenActive());
+  if (fullscreenBtn) {
+    const showButton = hasValidStudent() && !isFullscreenActive();
+    fullscreenBtn.classList.toggle("hidden", !showButton);
+    fullscreenBtn.textContent = embedded ? "Pantalla completa" : "Ver en pantalla completa";
+    fullscreenBtn.title = embedded
+      ? "Solicitar pantalla completa para la app incrustada en Google Sites"
+      : "Ampliar la app a pantalla completa";
+  }
+}
+
+function requestGoogleSitesFullscreen({ showFallback = true } = {}) {
+  document.documentElement.classList.add("google-sites-fullscreen-requested");
+  return requestNativeFullscreen(document.documentElement).then(ok => {
+    updateFullscreenControls();
+    if (!ok && showFallback) openGoogleSitesFullscreenFallback();
+    return ok;
+  });
+}
+
+function openGoogleSitesFullscreenFallback() {
+  if (document.querySelector(".google-sites-fullscreen-fallback")) return;
+  openActionDialog({
+    title: "Pantalla completa en Google Sites",
+    message: "El navegador o el contenedor de Google Sites no permitió activar pantalla completa desde el iframe. Para una experiencia segura, abre el simulador en una pestaña nueva y vuelve a iniciar la sesión en pantalla completa.",
+    confirmText: "Abrir en pestaña nueva",
+    cancelText: "Continuar aquí",
+    danger: false,
+    onConfirm: openAppInNewTab
+  });
+  const overlay = document.querySelector(".dialog-overlay");
+  if (overlay) overlay.classList.add("google-sites-fullscreen-fallback");
+}
+
+function renderGoogleSitesFullscreenNotice() {
+  if (isFullscreenActive()) return "";
+  const embedded = isEmbeddedInFrame();
+  return `
+    <section class="google-sites-fullscreen-notice" aria-label="Pantalla completa para Google Sites">
+      <div>
+        <p class="eyebrow">Google Sites · pantalla completa</p>
+        <strong>${embedded ? "Activa pantalla completa para presentar el simulacro dentro de Google Sites." : "Puedes ampliar el simulador a pantalla completa."}</strong>
+        <span>${embedded ? "Si el sitio no lo permite, usa la opción de abrir en pestaña nueva." : "Recomendado antes de iniciar la sesión."}</span>
+      </div>
+      <div class="google-sites-fullscreen-actions">
+        <button class="primary-btn" type="button" data-google-sites-fullscreen>Activar pantalla completa</button>
+        ${embedded ? `<button class="secondary-btn" type="button" data-google-sites-open-tab>Abrir en pestaña nueva</button>` : ""}
+      </div>
+    </section>
+  `;
+}
+
 
 function scrollEmbeddedFrameTop() {
   window.requestAnimationFrame(() => {
@@ -843,6 +948,7 @@ function init() {
   const savedTheme = storageGet("simulador_icfes_theme", "light");
   document.documentElement.dataset.theme = savedTheme;
   themeBtn.textContent = savedTheme === "dark" ? "☀️" : "🌙";
+  updateFullscreenControls();
   bindGlobalEvents();
   installEmbeddedTopBehavior();
   const savedStudent = loadSavedStudent();
@@ -917,6 +1023,19 @@ function bindGlobalEvents() {
   if (tipsBtn) tipsBtn.addEventListener("click", openTipsModal);
   if (instructionsBtn) instructionsBtn.addEventListener("click", openInstructionsModal);
   if (dashboardBtn) dashboardBtn.addEventListener("click", openDashboardAccessDialog);
+  if (fullscreenBtn) fullscreenBtn.addEventListener("click", () => requestGoogleSitesFullscreen());
+
+  document.addEventListener("click", event => {
+    if (event.target.closest("[data-google-sites-fullscreen]")) {
+      event.preventDefault();
+      requestGoogleSitesFullscreen();
+      return;
+    }
+    if (event.target.closest("[data-google-sites-open-tab]")) {
+      event.preventDefault();
+      openAppInNewTab();
+    }
+  });
 
   themeBtn.addEventListener("click", () => {
     const current = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -934,6 +1053,7 @@ function bindGlobalEvents() {
   window.addEventListener("blur", handleSecureExamBlur);
   window.addEventListener("focus", handleSecureExamFocus);
   document.addEventListener("fullscreenchange", handleSecureExamFullscreenChange);
+  document.addEventListener("webkitfullscreenchange", handleSecureExamFullscreenChange);
   document.addEventListener("keydown", handleSecureExamKeydown, true);
   document.addEventListener("contextmenu", handleSecureExamContextMenu, true);
 }
@@ -1005,6 +1125,7 @@ function updateHeaderSessionButtons() {
   const loggedIn = hasValidStudent();
   if (logoutBtn) logoutBtn.classList.toggle("hidden", !loggedIn);
   if (dashboardBtn) dashboardBtn.classList.toggle("hidden", !loggedIn);
+  updateFullscreenControls();
 }
 
 
@@ -1370,6 +1491,7 @@ function renderAccess(pendingScope = null) {
   const currentEmail = normalizeEmailInput(current.email || current.studentEmail || "");
 
   app.innerHTML = `
+    ${renderGoogleSitesFullscreenNotice()}
     <section class="access-panel" aria-labelledby="accessTitle">
       <div class="access-card">
         <p class="eyebrow">${escapeHtml(INSTITUTION_NAME)}</p>
@@ -1440,6 +1562,7 @@ function renderAccess(pendingScope = null) {
     state.student = { fullName, group, email };
     storageSet(STUDENT_KEY, JSON.stringify(state.student));
     updateHeaderSessionButtons();
+    requestGoogleSitesFullscreen({ showFallback: false });
     openSecureExamInfoDialog(() => {
       if (pendingScope) startScope(pendingScope);
       else renderHome();
@@ -1514,6 +1637,7 @@ function renderHome() {
   homeBtn.classList.add("hidden");
   updateHeaderSessionButtons();
   app.innerHTML = `
+    ${renderGoogleSitesFullscreenNotice()}
     <section class="hero">
       <p class="eyebrow">${escapeHtml(INSTITUTION_NAME)}</p>
       <h2>ICFES Digital Saber 11</h2>
@@ -1851,6 +1975,7 @@ function renderExam({ scrollToTimer = false } = {}) {
   const progress = loaded ? Math.round((answeredCount / loaded) * 100) : 0;
 
   app.innerHTML = `
+    ${renderGoogleSitesFullscreenNotice()}
     <section class="exam-layout">
       <article class="exam-main">
         <div class="exam-top">
