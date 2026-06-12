@@ -10274,3 +10274,10 @@ html[data-theme="dark"] #fullscreenBtn {
     width: 100%;
   }
 }
+
+/* Oculta definitivamente botones de sincronización manual y formulario externo MJB */
+#syncSheetsBtn,
+#sendMjbReportBtn,
+.mjb-report-btn {
+  display: none !important;
+}

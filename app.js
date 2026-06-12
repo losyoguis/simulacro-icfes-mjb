@@ -2380,8 +2380,6 @@ function renderResults() {
         <button class="primary-btn" type="button" id="newAttemptBtn">Nuevo intento</button>
         <button class="secondary-btn" type="button" id="downloadPdfBtn">Descargar informe PDF</button>
         <button class="secondary-btn send-report-btn" type="button" id="sendPdfBtn">Enviar informe PDF</button>
-        <button class="secondary-btn" type="button" id="syncSheetsBtn">Sincronizar con Sheets</button>
-        <a class="secondary-btn mjb-report-btn" id="sendMjbReportBtn" href="${REPORT_MJB_FORM_URL}" target="_blank" rel="noopener noreferrer">Enviar Informe al MJB</a>
       </div>
       <div id="emailReportStatus" class="email-report-status" role="status" aria-live="polite"></div>
 
@@ -2399,26 +2397,6 @@ function renderResults() {
     updateSendReportButtonSentState();
   } else {
     updateReportEmailStatus(getReportEmailInitialMessage(), REPORT_EMAIL_ENDPOINT ? "info" : "warning");
-  }
-  const syncSheetsBtn = document.getElementById("syncSheetsBtn");
-  if (syncSheetsBtn) {
-    syncSheetsBtn.addEventListener("click", async () => {
-      syncSheetsBtn.disabled = true;
-      syncSheetsBtn.textContent = "Sincronizando...";
-      updateReportEmailStatus("Registrando nuevamente el resultado en Google Sheets...", "info");
-      try {
-        const latest = buildResultData();
-        await submitResultOnlyToAppsScript(latest);
-        await submitDetailChunksToAppsScript(latest);
-        updateReportEmailStatus("Resultado confirmado en Google Sheets. Abre el dashboard y presiona Actualizar datos.", "success");
-      } catch (error) {
-        console.error("Error sincronizando Sheets:", error);
-        updateReportEmailStatus(`No se pudo sincronizar con Google Sheets: ${error.message || error}`, "error");
-      } finally {
-        syncSheetsBtn.disabled = false;
-        syncSheetsBtn.textContent = "Sincronizar con Sheets";
-      }
-    });
   }
 }
 
