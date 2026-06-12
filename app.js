@@ -54,6 +54,7 @@ const DASHBOARD_ACCESS_PASSWORD = "MJB-ICFES-2026";
 const DASHBOARD_ACCESS_KEY = "icfes_dashboard_institucional_autorizado_v1";
 const DASHBOARD_ACCESS_DURATION_MS = 4 * 60 * 60 * 1000;
 const GOOGLE_SITES_FULLSCREEN_NOTICE_KEY = "simulador_icfes_google_sites_fullscreen_notice_v1";
+const SECURITY_FINAL_ALERT_SOUND_PREFIX = "simulador_icfes_saber11_alerta_seguridad_sonido_v1_";
 
 
 const app = document.getElementById("app");
@@ -555,6 +556,106 @@ function renderSecurityReport(result) {
       </div>
     </section>
   `;
+}
+
+
+function isSecurityFinalAlertNeeded(result) {
+  const security = result && result.security ? result.security : null;
+  if (!security) return false;
+  return Boolean(
+    security.autoFinished
+    || security.status === "finalizado"
+    || Number(security.warnings || 0) >= SECURE_EXAM_MAX_WARNINGS
+  );
+}
+
+function getSecurityFinalAlertTitle() {
+  return "Intento finalizado por seguridad";
+}
+
+function getSecurityFinalAlertMessage(result) {
+  const security = result && result.security ? result.security : {};
+  const warnings = Number(security.warnings || 0);
+  const maxWarnings = Number(security.maxWarnings || SECURE_EXAM_MAX_WARNINGS);
+  const exits = Number(security.totalExits || 0);
+  return `Recuerda: no estaba permitido salir de la plataforma ni abandonar la pantalla completa durante el simulacro. El sistema registró ${warnings}/${maxWarnings} advertencias y ${exits} salida(s) o cambio(s) de pantalla. Este intento quedó marcado para revisión del docente.`;
+}
+
+function renderSecurityFinalAlert(result) {
+  if (!isSecurityFinalAlertNeeded(result)) return "";
+  const security = result.security || {};
+  return `
+    <section class="security-final-alert" role="alert" aria-live="assertive">
+      <div class="security-final-alert-icon" aria-hidden="true">⚠️</div>
+      <div class="security-final-alert-body">
+        <p class="security-final-alert-kicker">Alerta de seguridad</p>
+        <h3>${escapeHtml(getSecurityFinalAlertTitle())}</h3>
+        <p>${escapeHtml(getSecurityFinalAlertMessage(result))}</p>
+        <div class="security-final-alert-meta">
+          <span>Advertencias: <strong>${Number(security.warnings || 0)}/${Number(security.maxWarnings || SECURE_EXAM_MAX_WARNINGS)}</strong></span>
+          <span>Salidas registradas: <strong>${Number(security.totalExits || 0)}</strong></span>
+          <span>Estado: <strong>${escapeHtml(security.statusLabel || "Finalizado automáticamente")}</strong></span>
+        </div>
+      </div>
+      <button class="security-alert-sound-btn" type="button" id="securityAlertSoundBtn">🔊 Repetir alerta</button>
+    </section>
+  `;
+}
+
+function playSecurityWarningTone() {
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) return;
+  try {
+    const audioCtx = new AudioContextCtor();
+    const now = audioCtx.currentTime;
+    const sequence = [0, 0.22, 0.44];
+    sequence.forEach((offset, index) => {
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(index === 1 ? 620 : 780, now + offset);
+      gain.gain.setValueAtTime(0.001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.22, now + offset + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.18);
+      oscillator.connect(gain);
+      gain.connect(audioCtx.destination);
+      oscillator.start(now + offset);
+      oscillator.stop(now + offset + 0.2);
+    });
+    window.setTimeout(() => audioCtx.close().catch(() => {}), 1200);
+  } catch (error) {
+    console.warn("No fue posible reproducir el tono de alerta.", error);
+  }
+}
+
+function speakSecurityFinalAlert(result) {
+  if (!("speechSynthesis" in window)) return;
+  try {
+    const text = `${getSecurityFinalAlertTitle()}. ${getSecurityFinalAlertMessage(result)}`;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "es-CO";
+    utterance.rate = 0.92;
+    utterance.pitch = 0.95;
+    utterance.volume = 1;
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    console.warn("No fue posible reproducir la voz de alerta.", error);
+  }
+}
+
+function playSecurityFinalAlertSound(result) {
+  if (!isSecurityFinalAlertNeeded(result)) return;
+  playSecurityWarningTone();
+  window.setTimeout(() => speakSecurityFinalAlert(result), 420);
+}
+
+function playSecurityFinalAlertIfNeeded(result, force = false) {
+  if (!isSecurityFinalAlertNeeded(result)) return;
+  const key = `${SECURITY_FINAL_ALERT_SOUND_PREFIX}${result.submissionId || "actual"}`;
+  if (!force && storageGet(key)) return;
+  storageSet(key, "1");
+  window.setTimeout(() => playSecurityFinalAlertSound(result), 650);
 }
 
 
@@ -2386,6 +2487,8 @@ function renderResults() {
         <span class="pill success">Puntaje interno: ${result.score}%</span>
       </div>
 
+      ${renderSecurityFinalAlert(result)}
+
       <div class="report-meta-grid">
         <div><span>Institución educativa</span><strong>${escapeHtml(result.institutionName)}</strong></div>
         <div><span>Fecha de finalización</span><strong>${escapeHtml(result.finishedAtLabel)}</strong></div>
@@ -2436,6 +2539,11 @@ function renderResults() {
   document.getElementById("newAttemptBtn").addEventListener("click", renderHome);
   document.getElementById("downloadPdfBtn").addEventListener("click", downloadPdfReport);
   document.getElementById("sendPdfBtn").addEventListener("click", () => sendReportEmail({ automatic: false }));
+  const securityAlertSoundBtn = document.getElementById("securityAlertSoundBtn");
+  if (securityAlertSoundBtn) {
+    securityAlertSoundBtn.addEventListener("click", () => playSecurityFinalAlertIfNeeded(result, true));
+  }
+  playSecurityFinalAlertIfNeeded(result);
   if (isReportEmailAlreadySent(result)) {
     updateReportEmailStatus("El informe de este intento ya fue enviado una sola vez.", "success");
     updateSendReportButtonSentState();
@@ -3534,6 +3642,10 @@ function buildPdfReportLines(result) {
     `Salidas de pantalla completa: ${result.security ? result.security.fullscreenExits : 0}`,
     `Tiempo fuera del simulacro: ${result.security ? result.security.totalAwayLabel : "00:00:00"}`,
     `Accion aplicada: ${result.security ? result.security.actionApplied : "Sin novedades"}`,
+    ...(isSecurityFinalAlertNeeded(result) ? [
+      "ALERTA DE SEGURIDAD: INTENTO FINALIZADO AUTOMATICAMENTE",
+      "Recuerda que no estaba permitido salir de la plataforma ni abandonar pantalla completa durante el simulacro. Este intento queda para revision docente."
+    ] : []),
     "",
     "RESULTADO POR AREA"
   ];
@@ -3577,8 +3689,15 @@ function createChartPdf(result) {
   pdfText(ops, `Nivel interno: ${result.performanceLevel}`, marginX, 701, 9.2, true, colors.primary);
   const security = result.security || { statusLabel: "Normal", warnings: 0, maxWarnings: SECURE_EXAM_MAX_WARNINGS, totalExits: 0, totalAwayLabel: "00:00:00", actionApplied: "Sin novedades" };
   pdfText(ops, `Seguridad: ${security.statusLabel} | Advertencias: ${security.warnings}/${security.maxWarnings} | Salidas: ${security.totalExits} | Tiempo fuera: ${security.totalAwayLabel}`, marginX, 686, 8.7, false, colors.danger, 100);
+  const hasFinalSecurityAlert = isSecurityFinalAlertNeeded(result);
+  const alertShift = hasFinalSecurityAlert ? 48 : 0;
+  if (hasFinalSecurityAlert) {
+    pdfRoundRect(ops, marginX, 638, rightX - marginX, 34, 7, colors.danger, null);
+    pdfText(ops, "ALERTA: INTENTO FINALIZADO POR SEGURIDAD", marginX + 12, 657, 9.4, true, colors.white);
+    pdfText(ops, "No estaba permitido salir de la plataforma o abandonar pantalla completa. Revision docente obligatoria.", marginX + 12, 644, 7.6, false, colors.white, 108);
+  }
 
-  const cardY = 612;
+  const cardY = 612 - alertShift;
   const cardW = 116;
   const cardGap = 10;
   const cards = [
@@ -3595,22 +3714,22 @@ function createChartPdf(result) {
   });
 
   // Bloque grafico general: se separan titulos, metadatos y barras para evitar superposiciones en el PDF.
-  const summaryTitleY = 578;
+  const summaryTitleY = 578 - alertShift;
   pdfText(ops, "RESUMEN GRAFICO GENERAL", marginX, summaryTitleY, 11.5, true, colors.text);
   pdfText(ops, `Preguntas calificables: ${result.scored} | Respondidas: ${result.answered} | Disponibles: ${result.totalQuestions}`, marginX, summaryTitleY - 24, 9.2, false, colors.muted);
 
   const scoreX = marginX;
-  const scoreY = 508;
+  const scoreY = 508 - alertShift;
   const scoreW = rightX - marginX;
   pdfText(ops, `Porcentaje de acierto: ${result.score}%`, scoreX, scoreY + 31, 9.5, true, colors.text);
   pdfText(ops, `Recomendacion: ${result.performanceRecommendation}`, scoreX, scoreY - 15, 8.2, false, colors.muted, 112);
   pdfRect(ops, scoreX, scoreY, scoreW, 16, colors.line);
   pdfRect(ops, scoreX, scoreY, scoreW * Math.max(0, Math.min(result.score, 100)) / 100, 16, colors.primary);
 
-  pdfText(ops, "Distribucion de respuestas", marginX, 472, 9.5, true, colors.text);
+  pdfText(ops, "Distribucion de respuestas", marginX, 472 - alertShift, 9.5, true, colors.text);
   const total = Math.max(result.scored, 1);
   let cursorX = marginX;
-  const stackedY = 446;
+  const stackedY = 446 - alertShift;
   const stackedW = rightX - marginX;
   const segments = [
     ["Correctas", result.correct, colors.accent],
@@ -3623,7 +3742,7 @@ function createChartPdf(result) {
     if (width > 0) pdfRect(ops, cursorX, stackedY, width, 18, segment[2]);
     cursorX += width;
   });
-  let labelY = 422;
+  let labelY = 422 - alertShift;
   segments.forEach(segment => {
     const pct = Math.round((segment[1] / total) * 100);
     pdfRect(ops, marginX, labelY - 4, 8, 8, segment[2]);
@@ -3631,7 +3750,7 @@ function createChartPdf(result) {
     labelY -= 16;
   });
 
-  let y = 360;
+  let y = 360 - alertShift;
   pdfText(ops, "RESULTADO POR AREA", marginX, y, 11.5, true, colors.text);
   y -= 22;
 
