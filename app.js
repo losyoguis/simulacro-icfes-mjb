@@ -2835,6 +2835,19 @@ function buildReportEmailPayload(result, pdf) {
     studentGroup: result.studentGroup,
     studentEmail: result.studentEmail,
     studentEmailRaw: result.studentEmail,
+    // Control de correo único: el frontend solicita al Apps Script enviar solo el correo institucional
+    // "Simulador ICFES" y no compartir el PDF directamente por Drive con el estudiante.
+    sendStudentEmail: true,
+    sendInstitutionEmail: true,
+    savePdfToDrive: true,
+    shareDriveFileWithStudent: false,
+    notifyDriveShare: false,
+    suppressDriveShareEmail: true,
+    studentDrivePermission: false,
+    driveShareMode: "link-only",
+    onlyDirectEmail: true,
+    directEmailOnly: true,
+    disableDriveNotification: true,
     sessionLabel: result.sessionLabel,
     sessionTitle: result.sessionTitle,
     scopeLabel: result.scopeLabel,
@@ -2900,24 +2913,18 @@ async function sendReportEmail({ automatic = false } = {}) {
       sendBtn.disabled = true;
       sendBtn.textContent = automatic ? "Registrando..." : "Enviando...";
     }
-    updateReportEmailStatus("Registrando el resultado en Google Sheets...", "info");
-
-    // Registro liviano: se envía una sola vez por acción para evitar duplicados en el backend.
-    await submitResultOnlyToAppsScript(result);
-
-    updateReportEmailStatus("Resultado registrado. Enviando detalle por pregunta al dashboard...", "success");
-    await submitDetailChunksToAppsScript(result);
-
-    updateReportEmailStatus("Detalle registrado. Enviando un único correo con el PDF del informe...", "info");
+    updateReportEmailStatus("Enviando un único correo desde Simulador ICFES y registrando el resultado...", "info");
 
     const pdf = createChartPdf(result);
     const payload = buildReportEmailPayload(result, pdf);
 
-    // Envío completo: se usa un único POST oculto. No se combina con sendBeacon/fetch para evitar varios correos.
+    // Envío único: solo se ejecuta la acción final `enviarInforme`.
+    // Se eliminan envíos previos livianos/detallados porque podían generar notificaciones
+    // adicionales de Google Drive como "Elemento compartido contigo" desde la cuenta propietaria.
     await submitReportPayloadToAppsScript(payload);
     markReportEmailAsSent(result);
 
-    updateReportEmailStatus(`Informe enviado una sola vez y resultado registrado para ${result.studentName}.`, "success");
+    updateReportEmailStatus(`Informe enviado una sola vez desde Simulador ICFES para ${result.studentName}.`, "success");
     updateSendReportButtonSentState();
     return true;
   } catch (error) {
@@ -3328,7 +3335,12 @@ function tryPostHiddenFormToEndpoint(endpoint, payloadText, action) {
     const fields = {
       payload: payloadText,
       action: action || "payload",
-      source: "simulador-icfes-mjb-form"
+      accion: action || "payload",
+      source: "simulador-icfes-mjb-form",
+      shareDriveFileWithStudent: "false",
+      notifyDriveShare: "false",
+      suppressDriveShareEmail: "true",
+      onlyDirectEmail: "true"
     };
 
     Object.entries(fields).forEach(([name, value]) => {
