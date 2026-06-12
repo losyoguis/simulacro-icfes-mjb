@@ -34,6 +34,7 @@ const HISTORY_KEY = "simulador_icfes_saber11_historial_v2";
 const STUDENT_KEY = "simulador_icfes_saber11_estudiante_v2";
 const SUBMISSION_KEY = "simulador_icfes_saber11_envio_actual_v2";
 const REPORT_EMAIL_SENT_PREFIX = "simulador_icfes_saber11_correo_enviado_v2_";
+const REPORT_EMAIL_LOCK_PREFIX = "simulador_icfes_saber11_correo_bloqueo_v2_";
 const NOTEBOOK_RETURN_KEY = "simulador_icfes_saber11_notebook_return_v2";
 
 // Envío automático de informes por correo y registro en Google Sheets.
@@ -2789,7 +2790,7 @@ function getReportEmailInitialMessage() {
   if (!REPORT_EMAIL_ENDPOINT) {
     return `Envío automático pendiente de activar: pega la URL /exec de Google Apps Script en la constante REPORT_EMAIL_ENDPOINT. El informe se enviará al estudiante y a ${REPORT_INSTITUTION_EMAIL}, y quedará registrado para el análisis institucional de la ${INSTITUTION_NAME}.`;
   }
-  return `Al finalizar, el informe se envía automáticamente una sola vez al estudiante con PDF adjunto y enlace de Drive, y se envía copia institucional a ${REPORT_INSTITUTION_EMAIL}. Además, Google Sheets actualiza el análisis por estudiante, grupo y área.`;
+  return `Al finalizar, se envía un único correo al estudiante desde Simulador ICFES con el PDF adjunto. No se envía copia institucional por correo, no se envía enlace PDF adicional y no se genera notificación de Google Drive. El resultado se conserva para el dashboard institucional.`;
 }
 
 function updateReportEmailStatus(message, kind = "info") {
@@ -2810,6 +2811,32 @@ function isReportEmailAlreadySent(result) {
 
 function markReportEmailAsSent(result) {
   storageSet(getReportEmailSentKey(result), "sent");
+  storageRemove(getReportEmailLockKey(result));
+}
+
+function getReportEmailLockKey(result) {
+  const id = result && result.submissionId ? result.submissionId : getCurrentSubmissionId();
+  return `${REPORT_EMAIL_LOCK_PREFIX}${id}`;
+}
+
+function isReportEmailLocked(result) {
+  const raw = storageGet(getReportEmailLockKey(result), "");
+  if (!raw) return false;
+  const started = Number(raw) || 0;
+  const maxLockMs = 10 * 60 * 1000;
+  if (Date.now() - started > maxLockMs) {
+    storageRemove(getReportEmailLockKey(result));
+    return false;
+  }
+  return true;
+}
+
+function lockReportEmailSending(result) {
+  storageSet(getReportEmailLockKey(result), String(Date.now()));
+}
+
+function unlockReportEmailSending(result) {
+  storageRemove(getReportEmailLockKey(result));
 }
 
 function updateSendReportButtonSentState() {
@@ -2835,18 +2862,40 @@ function buildReportEmailPayload(result, pdf) {
     studentGroup: result.studentGroup,
     studentEmail: result.studentEmail,
     studentEmailRaw: result.studentEmail,
-    // Control de correo único: el frontend solicita al Apps Script enviar solo el correo institucional
-    // "Simulador ICFES" y no compartir el PDF directamente por Drive con el estudiante.
+    // Modo correo único: solo un mensaje al estudiante con PDF adjunto.
+    // No se envían copia institucional, enlace PDF independiente, respaldo MailApp ni notificación de Drive.
+    emailPolicy: "student_pdf_attachment_only",
+    senderName: "Simulador ICFES - M.",
+    recipients: [result.studentEmail],
     sendStudentEmail: true,
-    sendInstitutionEmail: true,
-    savePdfToDrive: true,
+    sendInstitutionEmail: false,
+    sendInstitutionalCopy: false,
+    sendCopyToInstitution: false,
+    sendTeacherCopy: false,
+    sendAdminCopy: false,
+    ccInstitution: false,
+    bccInstitution: false,
+    institutionEmailCc: "",
+    institutionEmailBcc: "",
+    savePdfToDrive: false,
+    createDriveFile: false,
+    createDriveLink: false,
+    includeDriveLink: false,
+    sendPdfLinkEmail: false,
+    sendDriveLinkEmail: false,
+    sendBackupEmail: false,
+    useMailAppFallback: false,
+    disableMailAppFallback: true,
     shareDriveFileWithStudent: false,
     notifyDriveShare: false,
     suppressDriveShareEmail: true,
     studentDrivePermission: false,
-    driveShareMode: "link-only",
+    driveShareMode: "none",
     onlyDirectEmail: true,
     directEmailOnly: true,
+    oneEmailOnly: true,
+    singleEmailOnly: true,
+    maxEmails: 1,
     disableDriveNotification: true,
     sessionLabel: result.sessionLabel,
     sessionTitle: result.sessionTitle,
@@ -2892,6 +2941,12 @@ async function sendReportEmail({ automatic = false } = {}) {
     return true;
   }
 
+  if (isReportEmailLocked(result)) {
+    updateReportEmailStatus("El informe ya fue solicitado para este intento. Para evitar correos duplicados, no se enviará otra solicitud.", "info");
+    updateSendReportButtonSentState();
+    return true;
+  }
+
   if (!REPORT_EMAIL_ENDPOINT) {
     const message = `No se pudo enviar todavía porque falta configurar la URL /exec de Google Apps Script. El informe debe enviarse al estudiante (${result.studentEmail}) y a ${REPORT_INSTITUTION_EMAIL}.`;
     updateReportEmailStatus(message, "warning");
@@ -2907,13 +2962,14 @@ async function sendReportEmail({ automatic = false } = {}) {
   }
 
   reportEmailInProgress = true;
+  lockReportEmailSending(result);
 
   try {
     if (sendBtn) {
       sendBtn.disabled = true;
       sendBtn.textContent = automatic ? "Registrando..." : "Enviando...";
     }
-    updateReportEmailStatus("Enviando un único correo desde Simulador ICFES y registrando el resultado...", "info");
+    updateReportEmailStatus("Enviando un solo correo desde Simulador ICFES con PDF adjunto...", "info");
 
     const pdf = createChartPdf(result);
     const payload = buildReportEmailPayload(result, pdf);
@@ -2924,12 +2980,13 @@ async function sendReportEmail({ automatic = false } = {}) {
     await submitReportPayloadToAppsScript(payload);
     markReportEmailAsSent(result);
 
-    updateReportEmailStatus(`Informe enviado una sola vez desde Simulador ICFES para ${result.studentName}.`, "success");
+    updateReportEmailStatus(`Informe enviado: un solo correo desde Simulador ICFES para ${result.studentName}.`, "success");
     updateSendReportButtonSentState();
     return true;
   } catch (error) {
     console.error("Error enviando informe:", error);
     updateReportEmailStatus(`No fue posible completar el envío automático: ${error.message || "verifica la conexión o la URL de Apps Script"}.`, "error");
+    unlockReportEmailSending(result);
     if (sendBtn && !isReportEmailAlreadySent(result)) {
       sendBtn.disabled = false;
       sendBtn.textContent = "Enviar informe PDF";
@@ -3332,15 +3389,47 @@ function tryPostHiddenFormToEndpoint(endpoint, payloadText, action) {
     form.target = iframeName;
     form.style.display = "none";
 
+    let parsedPayload = {};
+    try { parsedPayload = JSON.parse(payloadText || "{}"); } catch (_) { parsedPayload = {}; }
+
     const fields = {
       payload: payloadText,
-      action: action || "payload",
-      accion: action || "payload",
-      source: "simulador-icfes-mjb-form",
+      action: action || parsedPayload.action || "enviarInforme",
+      accion: action || parsedPayload.action || "enviarInforme",
+      source: "simulador-icfes-mjb-form-un-correo",
+      emailPolicy: "student_pdf_attachment_only",
+      senderName: "Simulador ICFES - M.",
+      studentEmail: parsedPayload.studentEmail || "",
+      studentEmailRaw: parsedPayload.studentEmailRaw || parsedPayload.studentEmail || "",
+      institutionEmail: parsedPayload.institutionEmail || REPORT_INSTITUTION_EMAIL,
+      sendStudentEmail: "true",
+      sendInstitutionEmail: "false",
+      sendInstitutionalCopy: "false",
+      sendCopyToInstitution: "false",
+      sendTeacherCopy: "false",
+      sendAdminCopy: "false",
+      ccInstitution: "false",
+      bccInstitution: "false",
+      savePdfToDrive: "false",
+      createDriveFile: "false",
+      createDriveLink: "false",
+      includeDriveLink: "false",
+      sendPdfLinkEmail: "false",
+      sendDriveLinkEmail: "false",
+      sendBackupEmail: "false",
+      useMailAppFallback: "false",
+      disableMailAppFallback: "true",
       shareDriveFileWithStudent: "false",
       notifyDriveShare: "false",
       suppressDriveShareEmail: "true",
-      onlyDirectEmail: "true"
+      studentDrivePermission: "false",
+      driveShareMode: "none",
+      onlyDirectEmail: "true",
+      directEmailOnly: "true",
+      oneEmailOnly: "true",
+      singleEmailOnly: "true",
+      maxEmails: "1",
+      disableDriveNotification: "true"
     };
 
     Object.entries(fields).forEach(([name, value]) => {
