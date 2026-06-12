@@ -404,6 +404,50 @@ function handleSecureExamContextMenu(event) {
   event.preventDefault();
 }
 
+
+function openExamInstructionsDialog(onConfirm) {
+  closeActionDialog();
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay exam-instructions-overlay";
+  overlay.setAttribute("role", "presentation");
+  overlay.innerHTML = `
+    <section class="dialog-card exam-instructions-card" role="dialog" aria-modal="true" aria-labelledby="examInstructionsTitle">
+      <p class="eyebrow">Instrucciones oficiales</p>
+      <h2 id="examInstructionsTitle">Instrucciones para presentar el Simulacro ICFES</h2>
+      <div class="exam-instructions-content">
+        <ol>
+          <li>Ingresa con tu nombre completo y apellidos, correo institucional y grupo correspondiente.</li>
+          <li>Cuando inicies la prueba, permanece siempre en la pantalla del simulacro.</li>
+          <li>No cambies de pestaña, no abras otras ventanas y no salgas de pantalla completa.</li>
+          <li>Si sales del simulacro, el sistema registrará la advertencia en tu informe final.</li>
+          <li>Después de varias salidas, la prueba puede finalizarse automáticamente.</li>
+          <li>Lee cada pregunta con calma antes de responder.</li>
+          <li>Revisa que hayas marcado correctamente tus respuestas antes de enviar.</li>
+          <li>Cuando termines toda la prueba, debes hacer clic en el botón <strong>FINALIZAR INTENTO</strong>. Este paso es obligatorio para que el sistema guarde tus respuestas y genere el informe.</li>
+          <li>Después de finalizar el intento, espera a que el sistema genere y envíe tu informe.</li>
+          <li>Realiza la prueba en silencio y de manera individual.</li>
+          <li>Cualquier dificultad técnica debe ser informada al docente.</li>
+          <li>A partir del viernes, esta plataforma se activará en <strong>Modo Entrenamiento</strong> para que puedas prepararte durante las vacaciones, aprovechando las herramientas de inteligencia artificial de <strong>Notebook</strong> e <strong>IA Studio</strong>.</li>
+          <li>La I.E. Manuel J. Betancur te desea muchos éxitos en este proceso.</li>
+          <li>No compitas con nadie: esta prueba es tu oportunidad de superarte a ti mismo.</li>
+        </ol>
+      </div>
+      <div class="dialog-actions">
+        <button class="primary-btn" type="button" data-instructions-confirm>Continuar</button>
+      </div>
+    </section>
+  `;
+  overlay.addEventListener("click", event => {
+    if (event.target.closest("[data-instructions-confirm]")) {
+      closeActionDialog();
+      if (typeof onConfirm === "function") onConfirm();
+    }
+  });
+  document.body.appendChild(overlay);
+  const confirmBtn = overlay.querySelector("[data-instructions-confirm]");
+  if (confirmBtn) confirmBtn.focus({ preventScroll: true });
+}
+
 function openSecureExamInfoDialog(onConfirm) {
   closeActionDialog();
   const overlay = document.createElement("div");
@@ -1554,10 +1598,12 @@ function renderAccess(pendingScope = null) {
     state.student = { fullName, group, email };
     storageSet(STUDENT_KEY, JSON.stringify(state.student));
     updateHeaderSessionButtons();
-    requestGoogleSitesFullscreen({ showFallback: false });
-    openSecureExamInfoDialog(() => {
-      if (pendingScope) startScope(pendingScope);
-      else renderHome();
+    openExamInstructionsDialog(() => {
+      requestGoogleSitesFullscreen({ showFallback: false });
+      openSecureExamInfoDialog(() => {
+        if (pendingScope) startScope(pendingScope);
+        else renderHome();
+      });
     });
   });
 
