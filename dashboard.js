@@ -986,94 +986,169 @@ function downloadStudentDashboardPdf(studentKey, sourceButton) {
 function createDashboardStudentPdf(record, summary) {
   const pageWidth = 595.28;
   const pageHeight = 841.89;
-  const marginX = 44;
+  const marginX = 40;
   const rightX = pageWidth - marginX;
   const colors = {
     primary: [0.13, 0.31, 0.73],
+    primaryDark: [0.07, 0.18, 0.38],
     accent: [0.02, 0.65, 0.47],
-    danger: [0.85, 0.31, 0.31],
+    danger: [0.85, 0.18, 0.18],
     warning: [0.96, 0.62, 0.04],
     text: [0.06, 0.13, 0.20],
     muted: [0.38, 0.45, 0.55],
     line: [0.86, 0.90, 0.95],
     panel: [0.97, 0.98, 0.99],
+    softBlue: [0.91, 0.95, 1],
     white: [1, 1, 1]
   };
-  const ops = [];
-  pdfRect(ops, 0, 0, pageWidth, pageHeight, colors.white);
-  pdfText(ops, 'INFORME INDIVIDUAL - DASHBOARD ICFES SABER 11', marginX, 804, 14.5, true, colors.primary);
-  pdfText(ops, DASHBOARD_INSTITUTION, marginX, 783, 10.8, true, colors.text);
-  pdfText(ops, `Estudiante: ${record.studentName || 'Sin nombre'}`, marginX, 760, 12, true, colors.text);
-  pdfText(ops, `Grupo: ${record.group || 'Sin grupo'} | Correo: ${record.email || 'Sin correo'}`, marginX, 743, 9.5, false, colors.text, 92);
-  pdfText(ops, `${record.sessionLabel || 'Sesión'} | ${record.scopeLabel || 'Intento'} | ${record.modeLabel || 'Modo no registrado'}`, marginX, 727, 9.2, false, colors.muted, 92);
-  pdfText(ops, `Fecha: ${record.finishedAtLabel || formatDateTime(record.timestampISO || record.timestamp)} | Tiempo: ${record.elapsedLabel || 'No registrado'}`, marginX, 712, 9.2, false, colors.muted, 92);
-  pdfText(ops, `Seguridad: ${record.securityStatus || 'No registrada'}${record.securityWarnings ? ` | Advertencias: ${record.securityWarnings}` : ''}${record.securityTotalExits ? ` | Salidas: ${record.securityTotalExits}` : ''}${record.securityAwayTime ? ` | Tiempo fuera: ${record.securityAwayTime}` : ''}`, marginX, 697, 8.8, false, colors.danger, 100);
 
+  const ops = [];
+  const studentName = record.studentName || 'Sin nombre';
+  const group = record.group || 'Sin grupo';
+  const email = record.email || 'Sin correo';
+  const elapsed = formatDurationForDashboardPdf(record.elapsedLabel);
+  const finished = record.finishedAtLabel || formatDateTime(record.timestampISO || record.timestamp);
+  const score = toNumber(record.score);
+  const securityStatus = record.securityStatus || 'Normal';
+  const securityWarnings = toNumber(record.securityWarnings);
+  const securityExits = toNumber(record.securityTotalExits);
+  const securityAway = formatDurationForDashboardPdf(record.securityAwayTime || '00:00:00');
+  const securityColor = /normal/i.test(securityStatus) && securityWarnings === 0 && securityExits === 0 ? colors.accent : colors.danger;
+
+  pdfRect(ops, 0, 0, pageWidth, pageHeight, colors.white);
+
+  // Encabezado institucional
+  pdfRect(ops, 0, 766, pageWidth, 76, colors.primaryDark);
+  pdfText(ops, 'INFORME INDIVIDUAL', marginX, 816, 15.5, true, colors.white);
+  pdfText(ops, 'Dashboard ICFES Saber 11', marginX, 794, 11, false, colors.white);
+  pdfText(ops, DASHBOARD_INSTITUTION, rightX - 210, 816, 9.8, true, colors.white, 38);
+  pdfText(ops, `Generado: ${formatDateTime(new Date().toISOString())}`, rightX - 210, 798, 8.4, false, colors.white, 42);
+
+  // Bloque de datos del estudiante
+  pdfRoundRect(ops, marginX, 646, 330, 100, 10, colors.panel, colors.line);
+  pdfText(ops, 'DATOS DEL ESTUDIANTE', marginX + 14, 724, 8.4, true, colors.primary);
+  pdfText(ops, studentName, marginX + 14, 704, 13.2, true, colors.text, 42);
+  pdfText(ops, `Grupo: ${group}`, marginX + 14, 682, 9.2, true, colors.text, 30);
+  pdfText(ops, `Correo: ${email}`, marginX + 14, 665, 8.4, false, colors.muted, 60);
+
+  // Bloque del intento
+  pdfRoundRect(ops, marginX + 346, 646, rightX - (marginX + 346), 100, 10, colors.panel, colors.line);
+  pdfText(ops, 'DATOS DEL INTENTO', marginX + 360, 724, 8.4, true, colors.primary);
+  pdfText(ops, `${record.sessionLabel || 'Sesion'} | ${record.scopeLabel || 'Intento'}`, marginX + 360, 704, 9.3, true, colors.text, 35);
+  pdfText(ops, `${record.modeLabel || 'Modo no registrado'}`, marginX + 360, 687, 8.4, false, colors.muted, 35);
+  pdfText(ops, `Fecha: ${finished}`, marginX + 360, 670, 8.2, false, colors.muted, 40);
+  pdfText(ops, `Tiempo: ${elapsed}`, marginX + 360, 654, 8.2, false, colors.muted, 40);
+
+  // Seguridad del simulacro
+  pdfRoundRect(ops, marginX, 585, rightX - marginX, 47, 8, colors.softBlue, colors.line);
+  pdfText(ops, 'SEGURIDAD DEL SIMULACRO', marginX + 14, 616, 8.3, true, colors.primary);
+  pdfText(ops, `Estado: ${securityStatus}`, marginX + 190, 616, 8.4, true, securityColor, 45);
+  pdfText(ops, `Advertencias: ${securityWarnings} | Salidas: ${securityExits} | Tiempo fuera: ${securityAway}`, marginX + 14, 598, 8.2, true, securityColor);
+  pdfText(ops, 'Registro de cambios de pestana, perdida de foco o salida de pantalla completa.', marginX + 250, 598, 7.4, false, colors.muted, 58);
+
+  // Tarjetas de indicadores
   const cards = [
-    ['Último resultado', `${toNumber(record.score)}%`, colors.primary],
-    ['Promedio estudiante', `${summary.studentAvg}%`, colors.accent],
-    ['Promedio grupo', `${summary.groupAvg}%`, colors.warning],
-    ['Promedio institución', `${summary.institutionAvg}%`, colors.primary]
+    ['Ultimo resultado', `${score}%`, colors.primary],
+    ['Promedio estudiante', `${round(summary.studentAvg, 1)}%`, colors.accent],
+    ['Promedio grupo', `${round(summary.groupAvg, 1)}%`, colors.warning],
+    ['Promedio institucion', `${round(summary.institutionAvg, 1)}%`, colors.primary]
   ];
-  const cardY = 638;
-  const cardW = 116;
-  const cardGap = 10;
+  const cardY = 516;
+  const cardW = 121;
+  const cardGap = 8;
   cards.forEach((card, index) => {
     const x = marginX + index * (cardW + cardGap);
     pdfRoundRect(ops, x, cardY, cardW, 58, 8, colors.panel, colors.line);
-    pdfText(ops, card[0], x + 10, cardY + 38, 7.8, false, colors.muted, 18);
-    pdfText(ops, card[1], x + 10, cardY + 16, 17, true, card[2]);
+    pdfText(ops, card[0], x + 10, cardY + 39, 7.8, false, colors.muted, 20);
+    pdfText(ops, card[1], x + 10, cardY + 15, 18, true, card[2]);
   });
 
-  let y = 590;
-  pdfText(ops, 'RESUMEN DEL INTENTO', marginX, y, 11.2, true, colors.text);
-  y -= 24;
+  // Resumen del intento
+  pdfText(ops, 'RESUMEN DEL INTENTO', marginX, 480, 11.5, true, colors.text);
+  pdfRoundRect(ops, marginX, 386, rightX - marginX, 78, 8, colors.panel, colors.line);
   const stats = [
-    `Preguntas disponibles: ${toNumber(record.totalQuestions)}`,
-    `Respondidas: ${toNumber(record.answered)}`,
-    `Calificables: ${toNumber(record.scored)}`,
-    `Correctas: ${toNumber(record.correct)}`,
-    `Incorrectas: ${toNumber(record.incorrect)}`,
-    `Omitidas: ${toNumber(record.omitted)}`,
-    `Nivel interno: ${levelForScore(record.score)}`
+    ['Preguntas disponibles', toNumber(record.totalQuestions)],
+    ['Respondidas', toNumber(record.answered)],
+    ['Calificables', toNumber(record.scored)],
+    ['Correctas', toNumber(record.correct)],
+    ['Incorrectas', toNumber(record.incorrect)],
+    ['Omitidas', toNumber(record.omitted)]
   ];
-  stats.forEach(line => { pdfText(ops, line, marginX, y, 9.2, false, colors.text); y -= 15; });
+  stats.forEach((item, index) => {
+    const col = index % 3;
+    const row = Math.floor(index / 3);
+    const x = marginX + 16 + col * 164;
+    const y = 439 - row * 33;
+    pdfText(ops, item[0], x, y, 7.8, false, colors.muted, 24);
+    pdfText(ops, String(item[1]), x, y - 18, 13, true, colors.text);
+  });
+  pdfText(ops, `Nivel interno: ${record.level || levelForScore(score)}`, marginX, 374, 8.6, true, colors.primary, 80);
 
-  y -= 8;
-  pdfText(ops, 'GRÁFICO GENERAL DE DESEMPEÑO', marginX, y, 11.2, true, colors.text);
-  y -= 26;
+  // Grafico general
+  pdfText(ops, 'GRAFICO GENERAL DE DESEMPENO', marginX, 342, 11.5, true, colors.text);
+  pdfText(ops, `Porcentaje de acierto: ${score}%`, marginX, 321, 8.8, true, colors.text);
   const barW = rightX - marginX;
-  pdfText(ops, `Porcentaje de acierto: ${toNumber(record.score)}%`, marginX, y + 22, 9.4, true, colors.text);
-  pdfRect(ops, marginX, y, barW, 16, colors.line);
-  pdfRect(ops, marginX, y, barW * Math.max(0, Math.min(toNumber(record.score), 100)) / 100, 16, colors.primary);
+  pdfRect(ops, marginX, 298, barW, 15, colors.line);
+  pdfRect(ops, marginX, 298, barW * Math.max(0, Math.min(score, 100)) / 100, 15, colors.primary);
+  pdfText(ops, '0%', marginX, 282, 7.4, false, colors.muted);
+  pdfText(ops, '100%', rightX - 22, 282, 7.4, false, colors.muted);
 
-  y -= 42;
-  pdfText(ops, 'RESULTADO POR ÁREA', marginX, y, 11.2, true, colors.text);
-  y -= 24;
+  // Resultado por area
+  pdfText(ops, 'RESULTADO POR AREA', marginX, 254, 11.5, true, colors.text);
   const areas = Array.isArray(record.byArea) ? record.byArea : [];
+  let y = 230;
   if (!areas.length) {
-    pdfText(ops, 'No hay desglose por área registrado para este intento.', marginX, y, 9.2, false, colors.muted);
-    y -= 18;
+    pdfText(ops, 'No hay desglose por area registrado para este intento.', marginX, y, 9, false, colors.muted);
+    y -= 22;
   } else {
-    areas.forEach(area => {
-      if (y < 125) return;
+    areas.slice(0, 5).forEach(area => {
       const pct = toNumber(area.percent);
-      pdfText(ops, area.area || 'Área sin nombre', marginX, y, 9.2, true, colors.text);
-      pdfText(ops, `${toNumber(area.correct)}/${toNumber(area.total)} correctas | ${pct}%`, rightX - 170, y, 8.8, false, colors.text);
-      pdfRect(ops, marginX, y - 17, 400, 12, colors.line);
-      pdfRect(ops, marginX, y - 17, 400 * Math.max(0, Math.min(pct, 100)) / 100, 12, colors.accent);
-      y -= 42;
+      const totalArea = toNumber(area.total);
+      const correctArea = toNumber(area.correct);
+      pdfText(ops, area.area || 'Area sin nombre', marginX, y, 8.8, true, colors.text, 38);
+      pdfText(ops, `${correctArea}/${totalArea} correctas | ${pct}%`, rightX - 140, y, 8.4, false, colors.text);
+      pdfRect(ops, marginX, y - 15, barW, 10, colors.line);
+      pdfRect(ops, marginX, y - 15, barW * Math.max(0, Math.min(pct, 100)) / 100, 10, colors.accent);
+      y -= 36;
     });
   }
 
-  y = Math.max(y - 10, 105);
-  pdfText(ops, 'RECOMENDACIÓN PEDAGÓGICA', marginX, y, 11.2, true, colors.text);
-  y -= 22;
-  pdfText(ops, record.recommendation || recommendationForScore(record.score), marginX, y, 8.8, false, colors.muted, 110);
-  pdfText(ops, 'Este informe fue generado desde el Dashboard Institucional. Si el enlace de Drive aún no aparece, este PDF permite descargar el resultado individual desde la página.', marginX, 56, 8.2, false, colors.muted, 110);
-  pdfText(ops, 'Página 1 de 1', marginX, 30, 8, false, colors.muted);
+  // Recomendacion final
+  const recY = Math.max(78, Math.min(y - 6, 92));
+  pdfRoundRect(ops, marginX, 54, rightX - marginX, 44, 8, colors.panel, colors.line);
+  pdfText(ops, 'RECOMENDACION PEDAGOGICA', marginX + 14, 82, 8.6, true, colors.primary);
+  pdfText(ops, record.recommendation || recommendationForScore(score), marginX + 14, 67, 7.5, false, colors.muted, 105);
+
+  pdfText(ops, 'Informe generado desde el Dashboard Institucional ICFES Saber 11.', marginX, 30, 7.6, false, colors.muted);
+  pdfText(ops, 'Pagina 1 de 1', rightX - 58, 30, 7.6, false, colors.muted);
   return buildPdfFromStreams([ops.join('\n')], pageWidth, pageHeight);
 }
+
+function formatDurationForDashboardPdf(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return 'No registrado';
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(raw)) return raw.length === 5 ? `00:${raw}` : raw;
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric) && numeric >= 0 && numeric < 10) {
+      return secondsToDashboardDuration(Math.round(numeric * 24 * 60 * 60));
+    }
+  }
+  const date = new Date(raw);
+  if (!Number.isNaN(date.getTime()) && /^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+    return secondsToDashboardDuration(date.getUTCHours() * 3600 + date.getUTCMinutes() * 60 + date.getUTCSeconds());
+  }
+  return raw;
+}
+
+function secondsToDashboardDuration(totalSeconds) {
+  const safe = Math.max(0, Number(totalSeconds) || 0);
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = Math.floor(safe % 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 
 function downloadBlob(filename, blob, options = {}) {
   const url = URL.createObjectURL(blob);
