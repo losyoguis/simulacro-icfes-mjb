@@ -88,18 +88,57 @@ let state = {
 let reportEmailInProgress = false;
 
 const ACTIVE_WORK_MODE = "simulacro";
-const DISABLED_WORK_MODES = new Set(["practica", "ai-studio", "entrenamiento"]);
+const ADMIN_MODE_CONFIG_KEY = "simulador_icfes_saber11_admin_modo_trabajo_v1";
+const ADMIN_MODE_SIMULACRO_ONLY = "simulacro-only";
+const ADMIN_MODE_TRAINING_AND_SIMULACRO = "training-and-simulacro";
+const TRAINING_WORK_MODES = new Set(["practica", "ai-studio", "entrenamiento"]);
+const WORK_MODE_LABELS = {
+  practica: "Entrenamiento con Notebook",
+  "ai-studio": "Entrenamiento con AI Studio",
+  entrenamiento: "Práctica sin tiempo",
+  simulacro: "Simulacro"
+};
 const SECURE_EXAM_MAX_WARNINGS = 3;
 const SECURE_EXAM_COOLDOWN_MS = 1800;
 const SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS = 350;
 
-function normalizeWorkMode() {
+function getAdminWorkModeConfig() {
+  return storageGet(ADMIN_MODE_CONFIG_KEY, ADMIN_MODE_SIMULACRO_ONLY) === ADMIN_MODE_TRAINING_AND_SIMULACRO
+    ? ADMIN_MODE_TRAINING_AND_SIMULACRO
+    : ADMIN_MODE_SIMULACRO_ONLY;
+}
+
+function isTrainingModeEnabled() {
+  return getAdminWorkModeConfig() === ADMIN_MODE_TRAINING_AND_SIMULACRO;
+}
+
+function getAdminModeConfigLabel() {
+  return isTrainingModeEnabled()
+    ? "Entrenamiento + Simulacro"
+    : "Solo Simulacro";
+}
+
+function normalizeWorkMode(mode = state.mode) {
+  const value = String(mode || "").trim();
+  if (value === ACTIVE_WORK_MODE) return ACTIVE_WORK_MODE;
+  if (isTrainingModeEnabled() && TRAINING_WORK_MODES.has(value)) return value;
   return ACTIVE_WORK_MODE;
 }
 
 function enforceSimulacroMode() {
-  state.mode = ACTIVE_WORK_MODE;
+  state.mode = normalizeWorkMode(state.mode);
   return state.mode;
+}
+
+function setAdminWorkModeConfig(value) {
+  const next = value === ADMIN_MODE_TRAINING_AND_SIMULACRO
+    ? ADMIN_MODE_TRAINING_AND_SIMULACRO
+    : ADMIN_MODE_SIMULACRO_ONLY;
+  storageSet(ADMIN_MODE_CONFIG_KEY, next);
+  state.mode = normalizeWorkMode(state.mode);
+  if (!isTrainingModeEnabled()) state.mode = ACTIVE_WORK_MODE;
+  updateModeSelectUi();
+  updateAdminModeBadges();
 }
 
 function createSecureExamState() {
@@ -1125,7 +1164,7 @@ function handleNotebookReturnRequest() {
     state = {
       ...state,
       ...saved,
-      mode: ACTIVE_WORK_MODE,
+      mode: normalizeWorkMode(saved.mode || params.get("mode") || ACTIVE_WORK_MODE),
       currentNumber: requestedQuestion || saved.currentNumber,
       finished: false
     };
@@ -1133,7 +1172,7 @@ function handleNotebookReturnRequest() {
     if (!hasValidStudent()) {
       state.student = loadSavedStudent();
     }
-    state.mode = ACTIVE_WORK_MODE;
+    state.mode = normalizeWorkMode(state.mode);
     if (!Number(state.remainingSeconds)) {
       const session = getSession(state.sessionId);
       state.remainingSeconds = session ? session.durationMinutes * 60 : 0;
@@ -1261,7 +1300,7 @@ function performLogout() {
 function updateHeaderSessionButtons() {
   const loggedIn = hasValidStudent();
   if (logoutBtn) logoutBtn.classList.toggle("hidden", !loggedIn);
-  if (dashboardBtn) dashboardBtn.classList.toggle("hidden", !loggedIn);
+  if (dashboardBtn) dashboardBtn.classList.remove("hidden");
   updateFullscreenControls();
 }
 
@@ -1282,7 +1321,21 @@ function isDashboardPasswordValid(value) {
   return String(value || "").trim() === DASHBOARD_ACCESS_PASSWORD;
 }
 
+function hasDashboardAccess() {
+  try {
+    const payload = JSON.parse(sessionStorage.getItem(DASHBOARD_ACCESS_KEY) || "null");
+    return Boolean(payload && payload.ok && Number(payload.expiresAt) > Date.now());
+  } catch (error) {
+    return false;
+  }
+}
+
 function openDashboardAccessDialog() {
+  if (hasDashboardAccess()) {
+    openAdminPanelDialog();
+    return;
+  }
+
   const existing = document.getElementById("dashboardAccessDialog");
   if (existing) existing.remove();
 
@@ -1294,8 +1347,8 @@ function openDashboardAccessDialog() {
     <section class="dialog-card dashboard-access-card" role="dialog" aria-modal="true" aria-labelledby="dashboardAccessTitle" aria-describedby="dashboardAccessHelp">
       <button class="dialog-close" type="button" aria-label="Cerrar">×</button>
       <p class="eyebrow">Acceso institucional</p>
-      <h2 id="dashboardAccessTitle">Dashboard institucional</h2>
-      <p id="dashboardAccessHelp">Ingresa la misma clave institucional usada para borrar los datos del dashboard.</p>
+      <h2 id="dashboardAccessTitle">Panel administrador</h2>
+      <p id="dashboardAccessHelp">Ingresa la clave institucional para abrir el dashboard y configurar los modos disponibles de la plataforma.</p>
       <label class="field">
         <span>Clave institucional</span>
         <input id="dashboardAccessPassword" type="password" autocomplete="current-password" placeholder="Escribe la clave" />
@@ -1303,7 +1356,7 @@ function openDashboardAccessDialog() {
       <div class="form-error" id="dashboardAccessError" aria-live="polite"></div>
       <div class="dialog-actions">
         <button class="secondary-btn" type="button" data-dashboard-access-cancel>Cancelar</button>
-        <button class="primary-btn" type="button" id="dashboardAccessConfirm">Ingresar al dashboard</button>
+        <button class="primary-btn" type="button" id="dashboardAccessConfirm">Ingresar como administrador</button>
       </div>
     </section>
   `;
@@ -1321,7 +1374,8 @@ function openDashboardAccessDialog() {
       return;
     }
     grantDashboardAccess();
-    window.location.href = "dashboard.html";
+    close();
+    openAdminPanelDialog();
   };
 
   overlay.querySelector(".dialog-close").addEventListener("click", close);
@@ -1333,6 +1387,77 @@ function openDashboardAccessDialog() {
   });
   confirmBtn.addEventListener("click", submit);
   password.focus();
+}
+
+function openAdminPanelDialog() {
+  const existing = document.getElementById("adminPanelDialog");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay admin-panel-dialog";
+  overlay.id = "adminPanelDialog";
+  overlay.setAttribute("role", "presentation");
+  overlay.innerHTML = `
+    <section class="dialog-card admin-panel-card" role="dialog" aria-modal="true" aria-labelledby="adminPanelTitle">
+      <button class="dialog-close" type="button" aria-label="Cerrar">×</button>
+      <p class="eyebrow">Solo administrador</p>
+      <h2 id="adminPanelTitle">Panel administrador</h2>
+      <p class="admin-panel-intro">Desde esta sección puedes ingresar al dashboard institucional y decidir qué modos estarán disponibles en esta plataforma.</p>
+
+      <div class="admin-mode-current" id="adminModeCurrent">
+        <span>Modo actual</span>
+        <strong>${getAdminModeConfigLabel()}</strong>
+      </div>
+
+      <div class="admin-panel-actions">
+        <button class="primary-btn" type="button" data-admin-dashboard>Ingresar al dashboard institucional</button>
+      </div>
+
+      <div class="admin-mode-grid" aria-label="Configuración de modos disponibles">
+        <button class="admin-mode-option" type="button" data-admin-mode="${ADMIN_MODE_TRAINING_AND_SIMULACRO}">
+          <span>1</span>
+          <strong>Activar entrenamiento y simulacro</strong>
+          <small>Habilita Notebook, AI Studio, práctica sin tiempo y simulacro.</small>
+        </button>
+        <button class="admin-mode-option" type="button" data-admin-mode="${ADMIN_MODE_SIMULACRO_ONLY}">
+          <span>2</span>
+          <strong>Solo simulacro</strong>
+          <small>Deja activa únicamente la primera y segunda sesión de simulacro.</small>
+        </button>
+      </div>
+
+      <p class="footer-note admin-note">La configuración queda guardada en este navegador. Para dejarla fija en GitHub Pages, publica el ZIP con el modo deseado.</p>
+    </section>
+  `;
+
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector(".dialog-close").addEventListener("click", close);
+  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
+  overlay.addEventListener("keydown", event => { if (event.key === "Escape") close(); });
+  overlay.querySelector("[data-admin-dashboard]").addEventListener("click", () => {
+    grantDashboardAccess();
+    window.location.href = "dashboard.html";
+  });
+  overlay.querySelectorAll("[data-admin-mode]").forEach(button => {
+    button.addEventListener("click", () => {
+      setAdminWorkModeConfig(button.dataset.adminMode);
+      updateAdminModeBadges();
+      if (state.screen === "home") renderHome();
+    });
+  });
+  updateAdminModeBadges();
+}
+
+function updateAdminModeBadges() {
+  document.querySelectorAll("[data-admin-mode]").forEach(button => {
+    const active = button.dataset.adminMode === getAdminWorkModeConfig();
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  document.querySelectorAll("#adminModeCurrent strong, #adminModeCurrentInline").forEach(element => {
+    element.textContent = getAdminModeConfigLabel();
+  });
 }
 
 function openActionDialog({ title, message, confirmText = "Aceptar", cancelText = "Cancelar", danger = false, onConfirm, onCancel }) {
@@ -1781,7 +1906,9 @@ function renderHome() {
       <p class="eyebrow">${escapeHtml(INSTITUTION_NAME)}</p>
       <h2>ICFES Digital Saber 11</h2>
       <p>
-        Prepárate para el ICFES con inteligencia artificial. En esta versión solo está activo el modo SIMULACRO cronometrado para medir el desempeño en condiciones similares a la prueba.
+        ${isTrainingModeEnabled()
+          ? "Prepárate para el ICFES con inteligencia artificial. El administrador activó los modos de entrenamiento y el simulacro cronometrado."
+          : "Prepárate para el ICFES con inteligencia artificial. En esta versión solo está activo el modo SIMULACRO cronometrado para medir el desempeño en condiciones similares a la prueba."}
       </p>
       <div class="hero-grid">
         <div class="stat"><strong>2</strong><span>sesiones configuradas</span></div>
@@ -1803,22 +1930,24 @@ function renderHome() {
       </div>
     </section>
 
+    ${renderAdminAccessSection()}
+
     <section class="config-bar mode-select-bar" aria-label="Configuración del simulador">
       <div class="mode-select-panel ${state.mode ? "has-mode" : "needs-mode"}">
         <div class="mode-select-head">
           <div>
             <p class="eyebrow">Modo de trabajo disponible</p>
-            <h3>Solo SIMULACRO activo</h3>
+            <h3>${isTrainingModeEnabled() ? "Entrenamiento y SIMULACRO activos" : "Solo SIMULACRO activo"}</h3>
           </div>
-          <span class="required-badge">Activo</span>
+          <span class="required-badge">${isTrainingModeEnabled() ? "Admin activo" : "Simulacro"}</span>
         </div>
         <label class="mode-select-wrap" for="modeSelect">
           <span class="mode-select-icon">🚀</span>
           <select id="modeSelect" name="mode" required aria-label="Selecciona el modo de trabajo">
-            <option value="practica" disabled>1. Entrenamiento con Notebook — desactivado</option>
-            <option value="ai-studio" disabled>2. Entrenamiento con AI Studio — desactivado</option>
-            <option value="entrenamiento" disabled>3. Práctica sin tiempo — desactivado</option>
-            <option value="simulacro" selected>4. SIMULACRO — activo para medir desempeño</option>
+            <option value="practica" ${!isTrainingModeEnabled() ? "disabled" : ""}>1. Entrenamiento con Notebook${!isTrainingModeEnabled() ? " — desactivado" : ""}</option>
+            <option value="ai-studio" ${!isTrainingModeEnabled() ? "disabled" : ""}>2. Entrenamiento con AI Studio${!isTrainingModeEnabled() ? " — desactivado" : ""}</option>
+            <option value="entrenamiento" ${!isTrainingModeEnabled() ? "disabled" : ""}>3. Práctica sin tiempo${!isTrainingModeEnabled() ? " — desactivado" : ""}</option>
+            <option value="simulacro">4. SIMULACRO — activo para medir desempeño</option>
           </select>
         </label>
         <div class="mode-select-preview" id="modeSelectPreview">
@@ -1836,10 +1965,12 @@ function renderHome() {
   if (modeSelect) {
     modeSelect.addEventListener("change", event => {
       state.mode = normalizeWorkMode(event.target.value);
-      event.target.value = ACTIVE_WORK_MODE;
+      event.target.value = state.mode;
       updateModeSelectUi();
     });
   }
+  const openAdminSectionBtn = document.getElementById("openAdminSectionBtn");
+  if (openAdminSectionBtn) openAdminSectionBtn.addEventListener("click", openDashboardAccessDialog);
   updateModeSelectUi();
 
   document.getElementById("changeStudentBtn").addEventListener("click", () => {
@@ -1856,6 +1987,22 @@ function renderHome() {
   document.getElementById("resumeBtn").addEventListener("click", resumeSavedAttempt);
   renderSessionCards();
   app.focus();
+}
+
+function renderAdminAccessSection() {
+  return `
+    <section class="admin-access-section" aria-label="Sección exclusiva para administrador">
+      <div>
+        <p class="eyebrow">Solo administrador</p>
+        <h3>Configuración institucional</h3>
+        <p>Accede con clave para abrir el dashboard y cambiar los modos disponibles de la plataforma.</p>
+      </div>
+      <div class="admin-access-actions">
+        <span>Modo actual: <strong id="adminModeCurrentInline">${getAdminModeConfigLabel()}</strong></span>
+        <button class="secondary-btn" id="openAdminSectionBtn" type="button">Abrir panel administrador</button>
+      </div>
+    </section>
+  `;
 }
 
 function renderModeSelectPreview(mode) {
@@ -1908,7 +2055,7 @@ function updateModeSelectUi() {
   const panel = document.querySelector(".mode-select-panel");
   const preview = document.getElementById("modeSelectPreview");
   const modeSelect = document.getElementById("modeSelect");
-  const hasMode = state.mode === ACTIVE_WORK_MODE;
+  const hasMode = Boolean(state.mode);
 
   if (panel) {
     panel.classList.toggle("has-mode", hasMode);
@@ -1916,7 +2063,10 @@ function updateModeSelectUi() {
   }
   if (preview) preview.innerHTML = renderModeSelectPreview(state.mode);
   if (modeSelect) {
-    modeSelect.value = ACTIVE_WORK_MODE;
+    modeSelect.querySelectorAll("option").forEach(option => {
+      if (TRAINING_WORK_MODES.has(option.value)) option.disabled = !isTrainingModeEnabled();
+    });
+    modeSelect.value = normalizeWorkMode(state.mode);
     modeSelect.classList.toggle("mode-select-missing", !hasMode);
   }
   document.querySelectorAll('[data-action="session"], [data-action="area"]').forEach(button => {
@@ -2697,12 +2847,7 @@ function formatSeconds(totalSeconds) {
 
 function getModeLabel(mode) {
   if (!mode) return "Modo no seleccionado";
-  return {
-    simulacro: "Simulacro",
-    practica: "Entrenamiento con Notebook",
-    "ai-studio": "Entrenamiento con AI Studio",
-    entrenamiento: "Práctica sin tiempo"
-  }[mode] || mode;
+  return WORK_MODE_LABELS[mode] || mode;
 }
 
 function getInternalPerformanceLevel(score) {
@@ -2765,10 +2910,10 @@ function resumeSavedAttempt() {
     const saved = JSON.parse(raw);
     const session = getSession(saved.sessionId);
     if (!session) throw new Error("Sesión no encontrada");
-    const savedMode = saved.mode;
-    state = { ...state, ...saved, mode: ACTIVE_WORK_MODE, finished: false };
-    if (savedMode !== ACTIVE_WORK_MODE || !Number(state.remainingSeconds)) {
-      state.remainingSeconds = session.durationMinutes * 60;
+    const savedMode = normalizeWorkMode(saved.mode || ACTIVE_WORK_MODE);
+    state = { ...state, ...saved, mode: savedMode, finished: false };
+    if (saved.mode !== state.mode || !Number(state.remainingSeconds)) {
+      state.remainingSeconds = state.mode === "entrenamiento" ? 0 : session.durationMinutes * 60;
     }
     if (saved.student) state.student = saved.student;
     if (!hasValidStudent()) {
