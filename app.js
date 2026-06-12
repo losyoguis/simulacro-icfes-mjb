@@ -1999,11 +1999,8 @@ function renderExam({ scrollToTimer = false } = {}) {
           ${state.mode === "practica" ? `<span class="notebook-ready"><i></i>Notebook completo</span>` : ""}
           <span class="answered"><i></i>Respondida</span>
           <span class="marked"><i></i>Marcada para revisar</span>
-          <span class="pending"><i></i>Pendiente</span>
-          <span class="missing"><i></i>No disponible todavía</span>
         </div>
         <div class="question-grid" id="questionGrid"></div>
-        <p class="side-note">El panel conserva la numeración oficial del bloque. Las preguntas rayadas están reservadas para cuando sean adicionadas.</p>
       </aside>
     </section>
   `;
