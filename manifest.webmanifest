@@ -1,0 +1,16 @@
+{
+    "name": "ICFES Digital Saber 11",
+    "short_name": "ICFES Digital",
+    "description": "Prep\u00e1rate para el ICFES con un simulacro cronometrado y reporte individual de resultados.",
+    "start_url": "./index.html",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#0c1424",
+    "theme_color": "#0c1424",
+    "orientation": "portrait-primary",
+    "lang": "es-CO",
+    "categories": [
+        "education",
+        "productivity"
+    ]
+}

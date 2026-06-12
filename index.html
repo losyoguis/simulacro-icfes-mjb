@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c1424" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>ICFES Digital Saber 11 · Prepárate con IA</title>
+  <meta name="description" content="ICFES Digital Saber 11: simulacro cronometrado con informes individuales para preparar la Prueba Saber 11." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">IA</div>
+        <div>
+          <p class="eyebrow">Institución Educativa Manuel J. Betancur</p>
+          <h1>ICFES Digital Saber 11</h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="themeBtn" class="icon-btn" type="button" aria-label="Cambiar tema">🌙</button>
+        <button id="tipsBtn" class="ghost-btn" type="button">Tips</button>
+        <button id="instructionsBtn" class="ghost-btn" type="button">Inteligencia Híbrida</button>
+        <a id="dashboardBtn" class="ghost-btn header-link hidden" href="dashboard.html">Dashboard institucional</a>
+        <button id="logoutBtn" class="ghost-btn danger-ghost-btn hidden" type="button">Cerrar sesión</button>
+        <button id="homeBtn" class="ghost-btn hidden" type="button">Inicio</button>
+      </div>
+    </header>
+
+    <main id="app" class="app-main" tabindex="-1"></main>
+  </div>
+
+  <template id="session-card-template">
+    <article class="session-card">
+      <div class="session-card__head">
+        <div>
+          <p class="eyebrow session-label"></p>
+          <h2 class="session-title"></h2>
+        </div>
+        <span class="pill session-duration"></span>
+      </div>
+      <p class="session-description"></p>
+      <div class="session-stats"></div>
+      <div class="table-wrap">
+        <table class="structure-table">
+          <thead>
+            <tr>
+              <th>Bloque</th>
+              <th>Preguntas</th>
+              <th>Área</th>
+              <th>Disponibles</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="session-actions"></div>
+    </article>
+  </template>
+
+  <script src="data/question-bank.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c1424" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Entrenamiento con Notebook · ICFES Digital Saber 11</title>
+  <meta name="description" content="Entrenamiento con Notebook para preparar cada pregunta de ICFES Digital Saber 11." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell notebook-shell">
+    <header class="app-header notebook-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">NB</div>
+        <div>
+          <p class="eyebrow">Institución Educativa Manuel J. Betancur</p>
+          <h1>Entrenamiento con Notebook</h1>
+        </div>
+      </div>
+      <div class="header-actions">
+        <a class="ghost-btn header-link" id="returnQuestionHeaderBtn" href="index.html?volverPregunta=1">Volver a la pregunta</a>
+        <button id="themeBtn" class="icon-btn" type="button" aria-label="Cambiar tema">🌙</button>
+      </div>
+    </header>
+
+    <main id="notebookApp" class="app-main" tabindex="-1"></main>
+  </div>
+
+  <script src="data/question-bank.js"></script>
+  <script src="notebook.js"></script>
+</body>
+</html>

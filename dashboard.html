@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c1424" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Dashboard ICFES Saber 11° - I.E. Manuel J. Betancur</title>
+  <meta name="description" content="Dashboard institucional para analizar resultados globales, por grupo e individuales de ICFES Digital Saber 11." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell dashboard-shell">
+    <header class="app-header dashboard-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">IC</div>
+        <div>
+          <p class="eyebrow">Institución Educativa Manuel J. Betancur</p>
+          <h1>Dashboard ICFES Saber 11°</h1>
+        </div>
+      </div>
+      <div class="header-actions dashboard-header-actions">
+        <button id="themeBtn" class="icon-btn" type="button" aria-label="Cambiar tema">🌙</button>
+        <button id="refreshDashboardBtn" class="ghost-btn" type="button">Actualizar datos</button>
+        <button id="printDashboardBtn" class="ghost-btn" type="button">Exportar PDF</button>
+        <button id="deleteSheetDataBtn" class="danger-btn" type="button">Borrar datos Sheets</button>
+        <a class="ghost-btn header-link" href="index.html">Volver al simulador</a>
+      </div>
+    </header>
+
+    <main class="dashboard-main" id="dashboardApp">
+      <section class="dashboard-hero">
+        <div>
+          <p class="eyebrow">Informe general tipo ICFES</p>
+          <h2>Análisis institucional de resultados</h2>
+          <p>Consulta el comportamiento global, por grupo e individual de los estudiantes de grado 11°, con indicadores de desempeño, áreas por reforzar, preguntas críticas y recomendaciones pedagógicas para la Institución Educativa Manuel J. Betancur.</p>
+        </div>
+        <div class="dashboard-status" id="dashboardStatus" role="status">Conectando con Google Sheets...</div>
+      </section>
+
+      <section class="dashboard-filters" aria-label="Filtros del dashboard">
+        <label class="field">
+          <span>Grupo</span>
+          <select id="filterGroup">
+            <option value="">Todos los grupos</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Estudiante</span>
+          <select id="filterStudent">
+            <option value="">Todos los estudiantes</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Desde</span>
+          <input id="filterFrom" type="date" />
+        </label>
+        <label class="field">
+          <span>Hasta</span>
+          <input id="filterTo" type="date" />
+        </label>
+        <div class="dashboard-filter-actions">
+          <button id="clearFiltersBtn" class="secondary-btn" type="button">Limpiar filtros</button>
+          <a id="openSheetsBtn" class="secondary-btn header-link hidden" target="_blank" rel="noopener noreferrer">Abrir Google Sheets</a>
+        </div>
+      </section>
+
+      <section id="kpiGrid" class="dashboard-kpi-grid" aria-label="Indicadores principales"></section>
+
+      <section class="dashboard-grid-two">
+        <article class="dashboard-card">
+          <div class="dashboard-card-head">
+            <div>
+              <p class="eyebrow">Comparativo por grupo</p>
+              <h3>Promedio de acierto</h3>
+            </div>
+          </div>
+          <div id="groupChart" class="dashboard-chart"></div>
+        </article>
+
+        <article class="dashboard-card">
+          <div class="dashboard-card-head">
+            <div>
+              <p class="eyebrow">Nivel de desempeño</p>
+              <h3>Distribución institucional</h3>
+            </div>
+          </div>
+          <div id="levelChart" class="dashboard-chart"></div>
+        </article>
+      </section>
+
+      <section class="dashboard-grid-two">
+        <article class="dashboard-card">
+          <div class="dashboard-card-head">
+            <div>
+              <p class="eyebrow">Desempeño por área</p>
+              <h3>Fortalezas y prioridades</h3>
+            </div>
+          </div>
+          <div id="areaChart" class="dashboard-chart"></div>
+        </article>
+
+        <article class="dashboard-card">
+          <div class="dashboard-card-head">
+            <div>
+              <p class="eyebrow">Preguntas críticas</p>
+              <h3>Mayor porcentaje de error</h3>
+            </div>
+          </div>
+          <div id="questionChart" class="dashboard-chart"></div>
+        </article>
+      </section>
+
+      <section class="dashboard-card" id="recommendationsPanel">
+        <div class="dashboard-card-head">
+          <div>
+            <p class="eyebrow">Lectura pedagógica</p>
+            <h3>Recomendaciones automáticas</h3>
+          </div>
+        </div>
+        <div id="recommendationsList" class="recommendations-list"></div>
+      </section>
+
+      <section class="dashboard-card">
+        <div class="dashboard-card-head">
+          <div>
+            <p class="eyebrow">Ranking y seguimiento</p>
+            <h3>Resultados individuales</h3>
+          </div>
+        </div>
+        <div class="table-wrap dashboard-table-wrap">
+          <table class="structure-table dashboard-table">
+            <thead>
+              <tr>
+                <th>Grupo</th>
+                <th>Estudiante</th>
+                <th>Intentos</th>
+                <th>Último %</th>
+                <th>Promedio %</th>
+                <th>Nivel</th>
+                <th>Áreas por reforzar</th>
+                <th>PDF</th>
+              </tr>
+            </thead>
+            <tbody id="studentTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="dashboard-card individual-panel hidden" id="individualPanel">
+        <div class="dashboard-card-head">
+          <div>
+            <p class="eyebrow">Informe individual</p>
+            <h3 id="individualTitle">Estudiante seleccionado</h3>
+          </div>
+        </div>
+        <div id="individualContent"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
