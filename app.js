@@ -899,21 +899,9 @@ function openGoogleSitesFullscreenFallback() {
 }
 
 function renderGoogleSitesFullscreenNotice() {
-  if (isFullscreenActive()) return "";
-  const embedded = isEmbeddedInFrame();
-  return `
-    <section class="google-sites-fullscreen-notice" aria-label="Pantalla completa para Google Sites">
-      <div>
-        <p class="eyebrow">Google Sites · pantalla completa</p>
-        <strong>${embedded ? "Activa pantalla completa para presentar el simulacro dentro de Google Sites." : "Puedes ampliar el simulador a pantalla completa."}</strong>
-        <span>${embedded ? "Si el sitio no lo permite, usa la opción de abrir en pestaña nueva." : "Recomendado antes de iniciar la sesión."}</span>
-      </div>
-      <div class="google-sites-fullscreen-actions">
-        <button class="primary-btn" type="button" data-google-sites-fullscreen>Activar pantalla completa</button>
-        ${embedded ? `<button class="secondary-btn" type="button" data-google-sites-open-tab>Abrir en pestaña nueva</button>` : ""}
-      </div>
-    </section>
-  `;
+  // Aviso visual de Google Sites retirado por solicitud institucional.
+  // La app conserva el modo seguro y la solicitud de pantalla completa al iniciar el simulacro.
+  return "";
 }
 
 
