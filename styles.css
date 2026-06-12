@@ -10281,3 +10281,177 @@ html[data-theme="dark"] #fullscreenBtn {
 .mjb-report-btn {
   display: none !important;
 }
+
+/* ==========================================================
+   Corrección final de contraste día / noche en simulacro
+   ----------------------------------------------------------
+   Algunos recursos de preguntas usan tarjetas claras y SVG con
+   currentColor. En modo noche heredaban tinta clara sobre fondo
+   claro. Estas reglas fijan tinta oscura cuando el recurso tiene
+   fondo claro y mantienen contraste alto en día y noche.
+   ========================================================== */
+.route-card,
+.question-resource .route-card {
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%) !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12) !important;
+  opacity: 1 !important;
+}
+
+.route-card *,
+.question-resource .route-card * {
+  color: #0f172a !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+.route-card .route-node,
+.question-resource .route-card .route-node {
+  background: #ffffff !important;
+  color: #1e293b !important;
+  border-color: #cbd5e1 !important;
+}
+
+.route-card .route-node.home,
+.question-resource .route-card .route-node.home {
+  background: #dcfce7 !important;
+  color: #166534 !important;
+  border-color: #86efac !important;
+}
+
+.route-card .route-arrow,
+.question-resource .route-card .route-arrow {
+  color: #0f766e !important;
+}
+
+.route-card .route-arrow.back,
+.question-resource .route-card .route-arrow.back {
+  color: #b91c1c !important;
+}
+
+/* Opciones con gráficas/tablas en tarjetas claras */
+.option-rich .reaction-option-card,
+.reaction-option-card {
+  color: var(--text) !important;
+  opacity: 1 !important;
+}
+
+.reaction-option-title {
+  color: var(--primary-2) !important;
+  opacity: 1 !important;
+}
+
+.option-rich .reaction-chart-svg,
+.reaction-chart-svg,
+.question-resource .reaction-chart-svg {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+  opacity: 1 !important;
+  filter: none !important;
+}
+
+.option-rich .reaction-chart-svg text,
+.option-rich .reaction-chart-svg tspan,
+.reaction-chart-svg text,
+.reaction-chart-svg tspan,
+.question-resource .reaction-chart-svg text,
+.question-resource .reaction-chart-svg tspan {
+  fill: #0f172a !important;
+  color: #0f172a !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
+.option-rich .reaction-chart-svg [stroke="currentColor"],
+.reaction-chart-svg [stroke="currentColor"],
+.question-resource .reaction-chart-svg [stroke="currentColor"] {
+  stroke: #0f172a !important;
+}
+
+.option-rich .reaction-chart-svg [fill="currentColor"],
+.option-rich .reaction-chart-svg marker path,
+.reaction-chart-svg [fill="currentColor"],
+.reaction-chart-svg marker path,
+.question-resource .reaction-chart-svg [fill="currentColor"],
+.question-resource .reaction-chart-svg marker path {
+  fill: #0f172a !important;
+}
+
+.option-rich .reaction-chart-svg g[opacity],
+.reaction-chart-svg g[opacity],
+.question-resource .reaction-chart-svg g[opacity] {
+  opacity: 0.32 !important;
+}
+
+/* Tablas pequeñas dentro de opciones: legibles en ambos temas */
+.option-rich .science-table-wrap,
+.science-table-wrap {
+  overflow-x: auto;
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 16px;
+  padding: 8px;
+  opacity: 1 !important;
+}
+
+.option-rich .mini-table,
+.mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #0f172a !important;
+  background: #ffffff !important;
+  font-size: 0.92rem;
+}
+
+.option-rich .mini-table th,
+.option-rich .mini-table td,
+.mini-table th,
+.mini-table td {
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  background: #ffffff !important;
+  padding: 8px 10px;
+  font-weight: 800;
+  opacity: 1 !important;
+}
+
+.option-rich .mini-table th,
+.mini-table th {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+.option-rich .mini-table tr:nth-child(even) td,
+.mini-table tr:nth-child(even) td {
+  background: #f1f5f9 !important;
+}
+
+/* Refuerzo específico para modo noche: recursos claros siempre con tinta oscura */
+html[data-theme="dark"] .question-resource .route-card,
+html[data-theme="dark"] .question-resource .route-card *,
+html[data-theme="dark"] .option-rich .reaction-chart-svg,
+html[data-theme="dark"] .option-rich .reaction-chart-svg *,
+html[data-theme="dark"] .option-rich .science-table-wrap,
+html[data-theme="dark"] .option-rich .science-table-wrap *,
+html[data-theme="dark"] .option-rich .mini-table,
+html[data-theme="dark"] .option-rich .mini-table * {
+  text-shadow: none !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="dark"] .option-rich .reaction-chart-svg,
+html[data-theme="dark"] .reaction-chart-svg,
+html[data-theme="dark"] .question-resource .reaction-chart-svg {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+  border-color: #cbd5e1 !important;
+}
+
+html[data-theme="dark"] .option-rich .reaction-chart-svg text,
+html[data-theme="dark"] .reaction-chart-svg text,
+html[data-theme="dark"] .question-resource .reaction-chart-svg text {
+  fill: #0f172a !important;
+}
