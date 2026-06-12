@@ -754,12 +754,12 @@ function normalizeDashboardData(data) {
       omitted: toNumber(record.omitted),
       group: normalizeGroupValue(record.group),
       byArea: Array.isArray(record.byArea) ? record.byArea : []
-    })).filter(record => !isSystemTestRecord(record)) : [],
+    })).filter(record => !isSystemTestRecord(record) && DASHBOARD_ALLOWED_GROUPS.includes(record.group)) : [],
     details: Array.isArray(data.details) ? data.details.map(item => ({
       ...item,
       number: toNumber(item.number),
       group: normalizeGroupValue(item.group)
-    })).filter(record => !isSystemTestRecord(record)) : []
+    })).filter(record => !isSystemTestRecord(record) && DASHBOARD_ALLOWED_GROUPS.includes(record.group)) : []
   };
 }
 
