@@ -264,7 +264,6 @@ function requestSecureExamFullscreen() {
     saveState();
     updateSecureExamBadge();
     updateFullscreenControls();
-    if (isEmbeddedInFrame()) window.setTimeout(openGoogleSitesFullscreenFallback, 300);
     return Promise.resolve(false);
   }
 
@@ -279,7 +278,6 @@ function requestSecureExamFullscreen() {
           type: "system",
           description: "El estudiante debe permitir pantalla completa para presentar en modo seguro."
         });
-        if (isEmbeddedInFrame()) window.setTimeout(openGoogleSitesFullscreenFallback, 300);
       }
       saveState();
       updateSecureExamBadge();
@@ -1060,7 +1058,7 @@ function updateFullscreenControls() {
   }
 }
 
-function requestGoogleSitesFullscreen({ showFallback = true } = {}) {
+function requestGoogleSitesFullscreen({ showFallback = false } = {}) {
   document.documentElement.classList.add("google-sites-fullscreen-requested");
   return requestNativeFullscreen(document.documentElement).then(ok => {
     updateFullscreenControls();
@@ -1070,17 +1068,9 @@ function requestGoogleSitesFullscreen({ showFallback = true } = {}) {
 }
 
 function openGoogleSitesFullscreenFallback() {
-  if (document.querySelector(".google-sites-fullscreen-fallback")) return;
-  openActionDialog({
-    title: "Pantalla completa en Google Sites",
-    message: "El navegador o el contenedor de Google Sites no permitió activar pantalla completa desde el iframe. Para una experiencia segura, abre el simulador en una pestaña nueva y vuelve a iniciar la sesión en pantalla completa.",
-    confirmText: "Abrir en pestaña nueva",
-    cancelText: "Continuar aquí",
-    danger: false,
-    onConfirm: openAppInNewTab
-  });
-  const overlay = document.querySelector(".dialog-overlay");
-  if (overlay) overlay.classList.add("google-sites-fullscreen-fallback");
+  // Aviso retirado por solicitud institucional.
+  // En Google Sites, si el iframe no permite pantalla completa, la app continúa normalmente.
+  return false;
 }
 
 function renderGoogleSitesFullscreenNotice() {
@@ -1119,11 +1109,22 @@ function installEmbeddedTopBehavior() {
   observer.observe(app, { childList: true });
 }
 
+function updateThemeToggleButton(theme) {
+  if (!themeBtn) return;
+  const current = theme === "dark" ? "dark" : "light";
+  const nextLabel = current === "dark" ? "Día" : "Noche";
+  themeBtn.dataset.theme = current;
+  themeBtn.setAttribute("aria-label", `Cambiar a modo ${nextLabel.toLowerCase()}`);
+  themeBtn.setAttribute("title", `Cambiar a modo ${nextLabel}`);
+  const label = themeBtn.querySelector(".theme-toggle-label");
+  if (label) label.textContent = nextLabel;
+}
+
 function init() {
   enforceSimulacroMode();
   const savedTheme = storageGet("simulador_icfes_theme", "light");
   document.documentElement.dataset.theme = savedTheme;
-  themeBtn.textContent = savedTheme === "dark" ? "☀️" : "🌙";
+  updateThemeToggleButton(savedTheme);
   updateFullscreenControls();
   bindGlobalEvents();
   installEmbeddedTopBehavior();
@@ -1217,7 +1218,7 @@ function bindGlobalEvents() {
     const current = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
     const next = current === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
-    themeBtn.textContent = next === "dark" ? "☀️" : "🌙";
+    updateThemeToggleButton(next);
     storageSet("simulador_icfes_theme", next);
   });
 
