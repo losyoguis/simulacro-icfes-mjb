@@ -48,6 +48,10 @@ const INSTITUTION_NAME = "Institución Educativa Manuel J. Betancur";
 const INSTITUTION_SHORT_NAME = "I.E. Manuel J. Betancur";
 const REPORT_AUTOSEND_ON_FINISH = true;
 const REPORT_APP_VERSION = "ICFES-DIGITAL-SABER-11-IA-v15-notebook-sheets";
+const DASHBOARD_ACCESS_PASSWORD = "MJB-ICFES-2026";
+const DASHBOARD_ACCESS_KEY = "icfes_dashboard_institucional_autorizado_v1";
+const DASHBOARD_ACCESS_DURATION_MS = 4 * 60 * 60 * 1000;
+
 
 const app = document.getElementById("app");
 const homeBtn = document.getElementById("homeBtn");
@@ -912,6 +916,7 @@ function bindGlobalEvents() {
   if (logoutBtn) logoutBtn.addEventListener("click", handleLogout);
   if (tipsBtn) tipsBtn.addEventListener("click", openTipsModal);
   if (instructionsBtn) instructionsBtn.addEventListener("click", openInstructionsModal);
+  if (dashboardBtn) dashboardBtn.addEventListener("click", openDashboardAccessDialog);
 
   themeBtn.addEventListener("click", () => {
     const current = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
@@ -999,8 +1004,77 @@ function performLogout() {
 function updateHeaderSessionButtons() {
   const loggedIn = hasValidStudent();
   if (logoutBtn) logoutBtn.classList.toggle("hidden", !loggedIn);
-  // Botón Dashboard institucional desactivado en esta versión.
-  if (dashboardBtn) dashboardBtn.classList.add("hidden");
+  if (dashboardBtn) dashboardBtn.classList.toggle("hidden", !loggedIn);
+}
+
+
+function grantDashboardAccess() {
+  try {
+    sessionStorage.setItem(DASHBOARD_ACCESS_KEY, JSON.stringify({
+      ok: true,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + DASHBOARD_ACCESS_DURATION_MS
+    }));
+  } catch (error) {
+    console.warn("No fue posible guardar la autorización temporal del dashboard.", error);
+  }
+}
+
+function isDashboardPasswordValid(value) {
+  return String(value || "").trim() === DASHBOARD_ACCESS_PASSWORD;
+}
+
+function openDashboardAccessDialog() {
+  const existing = document.getElementById("dashboardAccessDialog");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay dashboard-access-dialog";
+  overlay.id = "dashboardAccessDialog";
+  overlay.setAttribute("role", "presentation");
+  overlay.innerHTML = `
+    <section class="dialog-card dashboard-access-card" role="dialog" aria-modal="true" aria-labelledby="dashboardAccessTitle" aria-describedby="dashboardAccessHelp">
+      <button class="dialog-close" type="button" aria-label="Cerrar">×</button>
+      <p class="eyebrow">Acceso institucional</p>
+      <h2 id="dashboardAccessTitle">Dashboard institucional</h2>
+      <p id="dashboardAccessHelp">Ingresa la misma clave institucional usada para borrar los datos del dashboard.</p>
+      <label class="field">
+        <span>Clave institucional</span>
+        <input id="dashboardAccessPassword" type="password" autocomplete="current-password" placeholder="Escribe la clave" />
+      </label>
+      <div class="form-error" id="dashboardAccessError" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <button class="secondary-btn" type="button" data-dashboard-access-cancel>Cancelar</button>
+        <button class="primary-btn" type="button" id="dashboardAccessConfirm">Ingresar al dashboard</button>
+      </div>
+    </section>
+  `;
+
+  document.body.appendChild(overlay);
+  const password = overlay.querySelector("#dashboardAccessPassword");
+  const error = overlay.querySelector("#dashboardAccessError");
+  const confirmBtn = overlay.querySelector("#dashboardAccessConfirm");
+  const close = () => overlay.remove();
+  const submit = () => {
+    if (!isDashboardPasswordValid(password.value)) {
+      error.textContent = "Clave incorrecta. Verifica la clave institucional.";
+      password.value = "";
+      password.focus();
+      return;
+    }
+    grantDashboardAccess();
+    window.location.href = "dashboard.html";
+  };
+
+  overlay.querySelector(".dialog-close").addEventListener("click", close);
+  overlay.querySelector("[data-dashboard-access-cancel]").addEventListener("click", close);
+  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
+  overlay.addEventListener("keydown", event => {
+    if (event.key === "Escape") close();
+    if (event.key === "Enter") submit();
+  });
+  confirmBtn.addEventListener("click", submit);
+  password.focus();
 }
 
 function openActionDialog({ title, message, confirmText = "Aceptar", cancelText = "Cancelar", danger = false, onConfirm, onCancel }) {

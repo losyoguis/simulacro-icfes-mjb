@@ -5,6 +5,9 @@ const DASHBOARD_INSTITUTION = "Institución Educativa Manuel J. Betancur";
 const DASHBOARD_SPREADSHEET_ID = "17FbkF9BulfEfAAoDFNkljdsXWjXQOH_cBB3r-Iizjxs";
 const DASHBOARD_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${DASHBOARD_SPREADSHEET_ID}/edit`;
 const DASHBOARD_ALLOWED_GROUPS = ["11-1", "11-2", "11-3"];
+const DASHBOARD_ACCESS_PASSWORD = "MJB-ICFES-2026";
+const DASHBOARD_ACCESS_KEY = "icfes_dashboard_institucional_autorizado_v1";
+const DASHBOARD_ACCESS_DURATION_MS = 4 * 60 * 60 * 1000;
 
 const dashboardState = {
   data: null,
@@ -37,7 +40,102 @@ const els = {
   individualContent: document.getElementById("individualContent")
 };
 
-initDashboard();
+initDashboardAccessGate();
+
+function initDashboardAccessGate() {
+  const savedTheme = localStorage.getItem("simulador_icfes_theme") || "light";
+  document.documentElement.dataset.theme = savedTheme;
+  if (els.themeBtn) els.themeBtn.textContent = savedTheme === "dark" ? "☀️" : "🌙";
+
+  if (hasDashboardAccess()) {
+    document.body.classList.remove("dashboard-locked");
+    initDashboard();
+    return;
+  }
+
+  document.body.classList.add("dashboard-locked");
+  showDashboardAccessGate();
+}
+
+function hasDashboardAccess() {
+  try {
+    const raw = sessionStorage.getItem(DASHBOARD_ACCESS_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || data.ok !== true || Number(data.expiresAt) < Date.now()) {
+      sessionStorage.removeItem(DASHBOARD_ACCESS_KEY);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+function grantDashboardAccess() {
+  try {
+    sessionStorage.setItem(DASHBOARD_ACCESS_KEY, JSON.stringify({
+      ok: true,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + DASHBOARD_ACCESS_DURATION_MS
+    }));
+  } catch (error) {
+    console.warn("No fue posible guardar la autorización temporal del dashboard.", error);
+  }
+}
+
+function isDashboardPasswordValid(value) {
+  return String(value || "").trim() === DASHBOARD_ACCESS_PASSWORD;
+}
+
+function showDashboardAccessGate() {
+  const existing = document.getElementById("dashboardAccessGate");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "dashboard-utility-overlay dashboard-access-overlay";
+  overlay.id = "dashboardAccessGate";
+  overlay.innerHTML = `
+    <section class="dashboard-utility-card dashboard-access-card" role="dialog" aria-modal="true" aria-labelledby="dashboardAccessTitle" aria-describedby="dashboardAccessHelp">
+      <p class="eyebrow">Acceso protegido</p>
+      <h2 id="dashboardAccessTitle">Dashboard institucional</h2>
+      <p id="dashboardAccessHelp">Para ver los resultados institucionales debes ingresar la misma clave usada para borrar los datos.</p>
+      <label class="field">
+        <span>Clave institucional</span>
+        <input id="dashboardAccessPassword" type="password" autocomplete="current-password" placeholder="Escribe la clave" />
+      </label>
+      <div class="dashboard-utility-status" id="dashboardAccessStatus" role="status"></div>
+      <div class="dialog-actions">
+        <a class="secondary-btn header-link" href="index.html">Volver al simulador</a>
+        <button class="primary-btn" type="button" id="dashboardAccessConfirm">Ingresar</button>
+      </div>
+    </section>
+  `;
+
+  document.body.appendChild(overlay);
+  const password = overlay.querySelector("#dashboardAccessPassword");
+  const status = overlay.querySelector("#dashboardAccessStatus");
+  const confirmBtn = overlay.querySelector("#dashboardAccessConfirm");
+  const submit = () => {
+    if (!isDashboardPasswordValid(password.value)) {
+      status.textContent = "Clave incorrecta. Verifica la clave institucional.";
+      status.dataset.kind = "error";
+      password.value = "";
+      password.focus();
+      return;
+    }
+    grantDashboardAccess();
+    overlay.remove();
+    document.body.classList.remove("dashboard-locked");
+    initDashboard();
+  };
+
+  confirmBtn.addEventListener("click", submit);
+  overlay.addEventListener("keydown", event => {
+    if (event.key === "Enter") submit();
+  });
+  password.focus();
+}
 
 function initDashboard() {
   const savedTheme = localStorage.getItem("simulador_icfes_theme") || "light";

@@ -10143,10 +10143,23 @@ html[data-theme="dark"] .mode-preview-card span:not(.mode-preview-icon) {
 }
 
 
-/* Versión simulacro seguro: botones superiores desactivados */
+/* Versión simulacro seguro: botones informativos superiores desactivados.
+   El dashboard institucional queda activo, pero protegido con clave. */
 #tipsBtn,
-#instructionsBtn,
-#dashboardBtn {
+#instructionsBtn {
   display: none !important;
   pointer-events: none !important;
+}
+
+body.dashboard-locked #dashboardApp,
+body.dashboard-locked .dashboard-header-actions {
+  display: none !important;
+}
+
+.dashboard-access-overlay {
+  z-index: 99999;
+}
+
+.dashboard-access-card {
+  max-width: 560px;
 }
