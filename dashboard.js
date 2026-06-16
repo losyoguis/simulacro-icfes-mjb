@@ -23,6 +23,7 @@ const els = {
   printBtn: document.getElementById("printDashboardBtn"),
   deleteBtn: document.getElementById("deleteSheetDataBtn"),
   group: document.getElementById("filterGroup"),
+  section: document.getElementById("filterSection"),
   student: document.getElementById("filterStudent"),
   from: document.getElementById("filterFrom"),
   to: document.getElementById("filterTo"),
@@ -154,9 +155,10 @@ function initDashboard() {
   els.printBtn.addEventListener("click", exportDashboardPdf);
   if (els.deleteBtn) els.deleteBtn.addEventListener("click", deleteSheetData);
   if (els.studentTable) els.studentTable.addEventListener("click", handleStudentTablePdfClick);
-  [els.group, els.student, els.from, els.to].forEach(input => input.addEventListener("change", renderDashboard));
+  [els.group, els.section, els.student, els.from, els.to].filter(Boolean).forEach(input => input.addEventListener("change", renderDashboard));
   els.clear.addEventListener("click", () => {
     els.group.value = "";
+    if (els.section) els.section.value = "";
     els.student.value = "";
     els.from.value = "";
     els.to.value = "";
@@ -232,7 +234,8 @@ function createInstitutionalDashboardPdf(records, details, summary) {
   pdfText(ops, `Generado: ${formatDateTime(new Date().toISOString())}`, marginX, 767, 8.5, false, colors.muted);
 
   const studentText = els.student && els.student.value ? (els.student.options[els.student.selectedIndex] ? els.student.options[els.student.selectedIndex].text : 'Filtrado') : 'Todos';
-  const filterText = `Filtros: Grupo ${els.group && els.group.value ? els.group.value : 'Todos'} | Estudiante ${studentText} | Desde ${els.from && els.from.value ? els.from.value : 'Inicio'} | Hasta ${els.to && els.to.value ? els.to.value : 'Hoy'}`;
+  const sectionText = els.section && els.section.value ? `Seccion ${els.section.value}` : 'Todas';
+  const filterText = `Filtros: Grupo ${els.group && els.group.value ? els.group.value : 'Todos'} | Seccion ${sectionText} | Estudiante ${studentText} | Desde ${els.from && els.from.value ? els.from.value : 'Inicio'} | Hasta ${els.to && els.to.value ? els.to.value : 'Hoy'}`;
   pdfText(ops, filterText, marginX, 750, 8.3, false, colors.muted, 112);
 
   const cards = [
@@ -831,8 +834,9 @@ function populateFilterOptions() {
 function populateStudentOptions() {
   const data = dashboardState.data || { records: [] };
   const group = els.group.value;
+  const section = els.section ? els.section.value : '';
   const selectedStudent = els.student.value;
-  const students = latestStudents(data.records.filter(record => !group || record.group === group));
+  const students = latestStudents(data.records.filter(record => (!group || record.group === group) && (!section || getSectionKey(record) === section)));
   els.student.innerHTML = `<option value="">Todos los estudiantes</option>` + students.map(student => `<option value="${escapeAttr(student.key)}">${escapeHtml(student.studentName)} · ${escapeHtml(student.group)}</option>`).join("");
   if (students.some(student => student.key === selectedStudent)) els.student.value = selectedStudent;
 }
@@ -866,12 +870,14 @@ function renderDashboard() {
 
 function applyFilters(records, details) {
   const group = els.group.value;
+  const section = els.section ? els.section.value : '';
   const studentKey = els.student.value;
   const from = els.from.value ? new Date(`${els.from.value}T00:00:00`) : null;
   const to = els.to.value ? new Date(`${els.to.value}T23:59:59`) : null;
 
   const filteredRecords = records.filter(record => {
     if (group && record.group !== group) return false;
+    if (section && getSectionKey(record) !== section) return false;
     if (studentKey && getStudentKey(record) !== studentKey) return false;
     const date = getRecordDate(record);
     if (from && date && date < from) return false;
@@ -883,6 +889,7 @@ function applyFilters(records, details) {
   const filteredDetails = details.filter(item => {
     if (allowed.has(getDetailAttemptKey(item))) return true;
     if (group && item.group !== group) return false;
+    if (section && getSectionKey(item) !== section) return false;
     if (studentKey && getStudentKey(item) !== studentKey) return false;
     return !from && !to;
   });
@@ -997,34 +1004,46 @@ function handleStudentTablePdfClick(event) {
 }
 
 function downloadStudentDashboardPdf(studentKey, sourceButton) {
-  const records = (dashboardState.data && dashboardState.data.records) ? dashboardState.data.records : [];
-  const studentRecords = records
+  const allRecords = (dashboardState.data && dashboardState.data.records) ? dashboardState.data.records : [];
+  const visibleRecords = (dashboardState.filteredRecords && dashboardState.filteredRecords.length) ? dashboardState.filteredRecords : allRecords;
+  const sectionFilter = els.section ? els.section.value : '';
+  const sourceRecords = sectionFilter ? visibleRecords : allRecords.filter(record => {
+    if (els.group && els.group.value && record.group !== els.group.value) return false;
+    if (els.from && els.from.value) {
+      const from = new Date(`${els.from.value}T00:00:00`);
+      const date = getRecordDate(record);
+      if (date && date < from) return false;
+    }
+    if (els.to && els.to.value) {
+      const to = new Date(`${els.to.value}T23:59:59`);
+      const date = getRecordDate(record);
+      if (date && date > to) return false;
+    }
+    return true;
+  });
+
+  const studentRecords = sourceRecords
     .filter(record => getStudentKey(record) === studentKey)
-    .sort((a, b) => dateValue(b.timestampISO || b.timestamp || b.finishedAtLabel) - dateValue(a.timestampISO || a.timestamp || a.finishedAtLabel));
+    .sort(compareRecordsForPdf);
 
   if (!studentRecords.length) {
     setStatus('No fue posible crear el PDF: no se encontró el registro del estudiante.', 'error');
     return;
   }
 
-  const latest = studentRecords[0];
-  const groupRecords = records.filter(record => record.group === latest.group);
-  const summary = {
-    attempts: studentRecords.length,
-    studentAvg: round(average(studentRecords.map(record => record.score)), 1),
-    groupAvg: round(average(groupRecords.map(record => record.score)), 1),
-    institutionAvg: round(average(records.map(record => record.score)), 1)
-  };
+  const pdfRecords = selectStudentPdfRecords(studentRecords);
+  const latest = pdfRecords[0] || studentRecords[0];
 
   try {
     if (sourceButton) {
       sourceButton.disabled = true;
       sourceButton.textContent = 'Creando PDF...';
     }
-    const pdf = createDashboardStudentPdf(latest, summary);
-    const filename = `informe-dashboard-icfes-mjb-${slugifyPdf(latest.studentName)}-${slugifyPdf(latest.group)}.pdf`;
+    const pdf = createDashboardStudentCombinedPdf(pdfRecords, sourceRecords);
+    const suffix = pdfRecords.length > 1 ? 'secciones' : slugifyPdf(latest.sessionLabel || 'seccion');
+    const filename = `informe-dashboard-icfes-mjb-${slugifyPdf(latest.studentName)}-${slugifyPdf(latest.group)}-${suffix}.pdf`;
     downloadBlob(filename, new Blob([pdf], { type: 'application/pdf' }));
-    setStatus(`PDF individual generado para ${latest.studentName}.`, 'success');
+    setStatus(`PDF individual generado para ${latest.studentName}${pdfRecords.length > 1 ? ' con las secciones presentadas' : ''}.`, 'success');
   } catch (error) {
     console.error(error);
     setStatus(`No fue posible crear el PDF individual. Detalle: ${error.message}`, 'error');
@@ -1036,7 +1055,7 @@ function downloadStudentDashboardPdf(studentKey, sourceButton) {
   }
 }
 
-function createDashboardStudentPdf(record, summary) {
+function createDashboardStudentPageStream(record, summary, pageNumber = 1, totalPages = 1) {
   const pageWidth = 595.28;
   const pageHeight = 841.89;
   const marginX = 40;
@@ -1087,7 +1106,7 @@ function createDashboardStudentPdf(record, summary) {
   // Bloque del intento
   pdfRoundRect(ops, marginX + 346, 646, rightX - (marginX + 346), 100, 10, colors.panel, colors.line);
   pdfText(ops, 'DATOS DEL INTENTO', marginX + 360, 724, 8.4, true, colors.primary);
-  pdfText(ops, `${record.sessionLabel || 'Sesion'} | ${record.scopeLabel || 'Intento'}`, marginX + 360, 704, 9.3, true, colors.text, 35);
+  pdfText(ops, `${sectionLabelForRecord(record)} | ${record.scopeLabel || 'Intento'}`, marginX + 360, 704, 9.3, true, colors.text, 35);
   pdfText(ops, `${record.modeLabel || 'Modo no registrado'}`, marginX + 360, 687, 8.4, false, colors.muted, 35);
   pdfText(ops, `Fecha: ${finished}`, marginX + 360, 670, 8.2, false, colors.muted, 40);
   pdfText(ops, `Tiempo: ${elapsed}`, marginX + 360, 654, 8.2, false, colors.muted, 40);
@@ -1173,8 +1192,34 @@ function createDashboardStudentPdf(record, summary) {
   pdfText(ops, record.recommendation || recommendationForScore(score), marginX + 14, 67, 7.5, false, colors.muted, 105);
 
   pdfText(ops, 'Informe generado desde el Dashboard Institucional ICFES Saber 11.', marginX, 30, 7.6, false, colors.muted);
-  pdfText(ops, 'Pagina 1 de 1', rightX - 58, 30, 7.6, false, colors.muted);
-  return buildPdfFromStreams([ops.join('\n')], pageWidth, pageHeight);
+  pdfText(ops, `Pagina ${pageNumber} de ${totalPages}`, rightX - 58, 30, 7.6, false, colors.muted);
+  return ops.join('\n');
+}
+
+function createDashboardStudentPdf(record, summary) {
+  return buildPdfFromStreams([createDashboardStudentPageStream(record, summary, 1, 1)], 595.28, 841.89);
+}
+
+function createDashboardStudentCombinedPdf(studentRecords, referenceRecords) {
+  const selected = Array.isArray(studentRecords) && studentRecords.length ? studentRecords : [];
+  if (!selected.length) throw new Error('No hay registros del estudiante para generar el PDF.');
+  const allRecords = Array.isArray(referenceRecords) && referenceRecords.length ? referenceRecords : selected;
+  const studentKey = getStudentKey(selected[0]);
+  const allStudentRecords = allRecords.filter(record => getStudentKey(record) === studentKey);
+  const studentAvg = round(average((allStudentRecords.length ? allStudentRecords : selected).map(record => record.score)), 1);
+  const institutionAvg = round(average(allRecords.map(record => record.score)), 1);
+  const totalPages = selected.length;
+  const streams = selected.map((record, index) => {
+    const groupRecords = allRecords.filter(item => item.group === record.group);
+    const summary = {
+      attempts: allStudentRecords.length || selected.length,
+      studentAvg,
+      groupAvg: round(average(groupRecords.map(item => item.score)), 1),
+      institutionAvg
+    };
+    return createDashboardStudentPageStream(record, summary, index + 1, totalPages);
+  });
+  return buildPdfFromStreams(streams, 595.28, 841.89);
 }
 
 function formatDurationForDashboardPdf(value) {
@@ -1467,6 +1512,38 @@ function summarize(records) {
     bestArea: areaRows.length ? `${areaRows[0].area} (${round(areaRows[0].percent, 1)}%)` : "Sin datos",
     weakArea: areaRows.length ? `${areaRows[areaRows.length - 1].area} (${round(areaRows[areaRows.length - 1].percent, 1)}%)` : "Sin datos"
   };
+}
+
+
+function getSectionKey(record) {
+  const raw = normalizeHeader(`${record && record.sessionLabel ? record.sessionLabel : ''} ${record && record.sessionTitle ? record.sessionTitle : ''} ${record && record.scopeLabel ? record.scopeLabel : ''}`);
+  if (!raw) return '';
+  if (raw.includes('seccion2') || raw.includes('sesion2') || raw.includes('segunda') || raw.includes('section2')) return '2';
+  if (raw.includes('seccion1') || raw.includes('sesion1') || raw.includes('primera') || raw.includes('section1')) return '1';
+  const digit = raw.match(/(?:^|[^0-9])([12])(?:$|[^0-9])/);
+  return digit ? digit[1] : '';
+}
+
+function sectionLabelForRecord(record) {
+  const key = getSectionKey(record);
+  if (key === '1') return 'Seccion 1';
+  if (key === '2') return 'Seccion 2';
+  return record && record.sessionLabel ? record.sessionLabel : 'Seccion no registrada';
+}
+
+function compareRecordsForPdf(a, b) {
+  const sectionA = getSectionKey(a) || '9';
+  const sectionB = getSectionKey(b) || '9';
+  if (sectionA !== sectionB) return sectionA.localeCompare(sectionB);
+  return dateValue(b.timestampISO || b.timestamp || b.finishedAtLabel) - dateValue(a.timestampISO || a.timestamp || a.finishedAtLabel);
+}
+
+function selectStudentPdfRecords(records) {
+  const grouped = groupBy(records || [], record => getSectionKey(record) || `sin-seccion-${getRecordAttemptKey(record)}`);
+  return Object.entries(grouped)
+    .map(([, items]) => items.slice().sort((a, b) => dateValue(b.timestampISO || b.timestamp || b.finishedAtLabel) - dateValue(a.timestampISO || a.timestamp || a.finishedAtLabel))[0])
+    .filter(Boolean)
+    .sort(compareRecordsForPdf);
 }
 
 function latestStudents(records) {
