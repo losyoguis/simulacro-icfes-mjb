@@ -11249,3 +11249,105 @@ html[data-theme="dark"] .review-locked-card .eyebrow {
     justify-items: center;
   }
 }
+
+
+/* ==========================================================
+   Corrección final de recursos de Lectura Crítica 43-46 y 49-51
+   ========================================================== */
+.petrichor-card .reading-instruction,
+.petrichor-card .petrichor-title,
+.petrichor-card .petrichor-title span,
+.petrichor-card .petrichor-close,
+.petrichor-card .petrichor-close p,
+.petrichor-card .petrichor-close strong,
+.petrichor-card .arrow-line,
+.petrichor-card .reading-source {
+  color: #111827 !important;
+}
+
+.petrichor-card .reading-instruction {
+  opacity: 1 !important;
+}
+
+.petrichor-card .petrichor-close {
+  background: #fffdf7 !important;
+  border-top: 2px solid #d1d5db;
+}
+
+.petrichor-card .reading-source {
+  display: block;
+  padding: 0 1rem 1rem;
+}
+
+.riad-comic-card .comic-panel,
+.riad-comic-card .caption-box,
+.riad-comic-card .speech,
+.riad-comic-card .thought,
+.riad-comic-card .reading-instruction,
+.riad-comic-card .reading-note,
+.riad-comic-card .reading-source,
+.riad-comic-card .aside-note {
+  color: #111827 !important;
+}
+
+.riad-comic-card .panel-number {
+  color: #ffffff !important;
+}
+
+html[data-theme="dark"] .question-resource .petrichor-card,
+html[data-theme="dark"] .question-resource .riad-comic-card {
+  background: #fffdf7 !important;
+  color: #111827 !important;
+}
+
+html[data-theme="dark"] .question-resource .petrichor-card .reading-instruction,
+html[data-theme="dark"] .question-resource .petrichor-card .petrichor-title,
+html[data-theme="dark"] .question-resource .petrichor-card .petrichor-title span,
+html[data-theme="dark"] .question-resource .petrichor-card .petrichor-close,
+html[data-theme="dark"] .question-resource .petrichor-card .petrichor-close p,
+html[data-theme="dark"] .question-resource .petrichor-card .petrichor-close strong,
+html[data-theme="dark"] .question-resource .petrichor-card .arrow-line,
+html[data-theme="dark"] .question-resource .petrichor-card .reading-source,
+html[data-theme="dark"] .question-resource .petrichor-card .petrichor-bubble,
+html[data-theme="dark"] .question-resource .petrichor-card .petrichor-bubble * {
+  color: #111827 !important;
+}
+
+html[data-theme="dark"] .question-resource .petrichor-card .petrichor-bubble {
+  background: #ffffff !important;
+  border-color: #111827 !important;
+  box-shadow: 0 2px 0 #111827 !important;
+}
+
+html[data-theme="dark"] .question-resource .petrichor-card .petrichor-close {
+  background: #fffdf7 !important;
+}
+
+html[data-theme="dark"] .question-resource .riad-comic-card .comic-panel,
+html[data-theme="dark"] .question-resource .riad-comic-card .caption-box,
+html[data-theme="dark"] .question-resource .riad-comic-card .speech,
+html[data-theme="dark"] .question-resource .riad-comic-card .thought,
+html[data-theme="dark"] .question-resource .riad-comic-card .reading-instruction,
+html[data-theme="dark"] .question-resource .riad-comic-card .reading-note,
+html[data-theme="dark"] .question-resource .riad-comic-card .reading-source,
+html[data-theme="dark"] .question-resource .riad-comic-card .aside-note,
+html[data-theme="dark"] .question-resource .riad-comic-card .comic-scene,
+html[data-theme="dark"] .question-resource .riad-comic-card .comic-scene * {
+  color: #111827 !important;
+}
+
+html[data-theme="dark"] .question-resource .riad-comic-card .comic-panel {
+  background: #f6f4ef !important;
+  border-color: #111827 !important;
+}
+
+html[data-theme="dark"] .question-resource .riad-comic-card .caption-box,
+html[data-theme="dark"] .question-resource .riad-comic-card .speech,
+html[data-theme="dark"] .question-resource .riad-comic-card .thought {
+  background: #ffffff !important;
+  border-color: #111827 !important;
+}
+
+html[data-theme="dark"] .question-resource .riad-comic-card .panel-number {
+  color: #ffffff !important;
+}
