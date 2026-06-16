@@ -215,10 +215,16 @@ function createInstitutionalDashboardPdf(records, details, summary) {
     muted: [0.38, 0.45, 0.55],
     line: [0.86, 0.90, 0.95],
     panel: [0.97, 0.98, 0.99],
+    softBlue: [0.95, 0.98, 1],
     white: [1, 1, 1]
   };
 
+  const allStudents = latestStudents(records);
+  const studentRowsPerPage = 18;
+  const studentPageCount = Math.max(1, Math.ceil(allStudents.length / studentRowsPerPage));
+  const totalPdfPages = 2 + studentPageCount; // resumen + paginas de estudiantes + lectura pedagogica
   const pages = [];
+
   const ops = [];
   pdfRect(ops, 0, 0, pageWidth, pageHeight, colors.white);
   pdfText(ops, 'DASHBOARD INSTITUCIONAL - ICFES DIGITAL SABER 11', marginX, 804, 14, true, colors.primary);
@@ -249,7 +255,7 @@ function createInstitutionalDashboardPdf(records, details, summary) {
   pdfText(ops, 'PROMEDIO POR GRUPO', marginX, y, 10.8, true, colors.text);
   y -= 23;
   const groupRows = Object.entries(groupBy(records, record => record.group || 'Sin grupo'))
-    .map(([group, items]) => ({ label: group, pct: round(average(items.map(item => item.score)), 1), detail: `${unique(items.map(getStudentKey)).length} estudiante(s) · ${items.length} intento(s)` }))
+    .map(([group, items]) => ({ label: group, pct: round(average(items.map(item => item.score)), 1), detail: `${unique(items.map(getStudentKey)).length} estudiante(s) | ${items.length} intento(s)` }))
     .sort((a, b) => b.pct - a.pct)
     .slice(0, 6);
   if (!groupRows.length) {
@@ -288,63 +294,92 @@ function createInstitutionalDashboardPdf(records, details, summary) {
     criticalRows.forEach(row => { if (y > 65) { pdfDashboardBar(ops, row.label, row.pct, row.detail, marginX, y, 250, colors.danger, colors); y -= 28; } });
   }
 
-  pdfText(ops, 'Pagina 1 de 3', marginX, 30, 8, false, colors.muted);
+  pdfText(ops, `Pagina 1 de ${totalPdfPages}`, marginX, 30, 8, false, colors.muted);
   pages.push(ops.join('\n'));
 
-  const ops2 = [];
-  pdfRect(ops2, 0, 0, pageWidth, pageHeight, colors.white);
-  pdfText(ops2, 'SEGUIMIENTO INDIVIDUAL', marginX, 804, 13, true, colors.primary);
-  pdfText(ops2, `Promedio general filtrado: ${summary.avgScore}% | Area fortaleza: ${summary.bestArea} | Area prioritaria: ${summary.weakArea}`, marginX, 782, 8.7, false, colors.muted, 110);
+  for (let pageIndex = 0; pageIndex < studentPageCount; pageIndex += 1) {
+    const opsStudent = [];
+    const pageNumber = 2 + pageIndex;
+    const start = pageIndex * studentRowsPerPage;
+    const chunk = allStudents.slice(start, start + studentRowsPerPage);
+    pdfRect(opsStudent, 0, 0, pageWidth, pageHeight, colors.white);
+    pdfText(opsStudent, 'SEGUIMIENTO INDIVIDUAL', marginX, 804, 13, true, colors.primary);
+    pdfText(opsStudent, `Promedio general filtrado: ${summary.avgScore}% | Area fortaleza: ${summary.bestArea} | Area prioritaria: ${summary.weakArea}`, marginX, 782, 8.5, false, colors.muted, 110);
+    pdfText(opsStudent, `Resultados individuales ${allStudents.length ? `${start + 1}-${Math.min(start + chunk.length, allStudents.length)} de ${allStudents.length}` : 'sin registros'}`, marginX, 762, 8.2, false, colors.muted, 110);
 
-  let y2 = 748;
-  pdfText(ops2, 'ULTIMO RESULTADO POR ESTUDIANTE', marginX, y2, 10.8, true, colors.text);
-  y2 -= 24;
-  const students = latestStudents(records).slice(0, 18);
-  if (!students.length) {
-    pdfText(ops2, 'No hay estudiantes registrados en el filtro actual.', marginX, y2, 8.8, false, colors.muted);
-  } else {
-    students.forEach(student => {
-      if (y2 < 122) return;
-      const name = `${student.studentName || 'Sin nombre'} · ${student.group || 'Sin grupo'}`;
-      const detail = `${student.latest.score}% ultimo | Promedio ${student.avgScore}% | ${student.attempts} intento(s)`;
-      pdfText(ops2, name, marginX, y2, 8.8, true, colors.text, 58);
-      pdfText(ops2, detail, marginX + 285, y2, 8.2, false, colors.muted, 52);
-      pdfRect(ops2, marginX, y2 - 15, rightX - marginX, 8, colors.line);
-      pdfRect(ops2, marginX, y2 - 15, (rightX - marginX) * Math.max(0, Math.min(toNumber(student.latest.score), 100)) / 100, 8, colors.primary);
-      y2 -= 34;
-    });
+    let yRow = 730;
+    pdfText(opsStudent, 'RANKING Y SEGUIMIENTO POR ESTUDIANTE', marginX, yRow, 10.5, true, colors.text);
+    yRow -= 18;
+
+    pdfRect(opsStudent, marginX, yRow - 13, rightX - marginX, 18, colors.softBlue);
+    pdfText(opsStudent, '#', marginX + 6, yRow - 7, 7.5, true, colors.primary);
+    pdfText(opsStudent, 'GRUPO', marginX + 26, yRow - 7, 7.5, true, colors.primary);
+    pdfText(opsStudent, 'ESTUDIANTE', marginX + 72, yRow - 7, 7.5, true, colors.primary);
+    pdfText(opsStudent, 'INT', marginX + 238, yRow - 7, 7.5, true, colors.primary);
+    pdfText(opsStudent, 'ULT.', marginX + 275, yRow - 7, 7.5, true, colors.primary);
+    pdfText(opsStudent, 'PROM.', marginX + 320, yRow - 7, 7.5, true, colors.primary);
+    pdfText(opsStudent, 'NIVEL', marginX + 372, yRow - 7, 7.5, true, colors.primary);
+    pdfText(opsStudent, 'AREAS POR REFORZAR', marginX + 452, yRow - 7, 7.5, true, colors.primary);
+    yRow -= 27;
+
+    if (!allStudents.length) {
+      pdfText(opsStudent, 'No hay estudiantes registrados en el filtro actual.', marginX, yRow, 9, false, colors.muted, 110);
+    } else {
+      chunk.forEach((student, localIndex) => {
+        const rowNumber = start + localIndex + 1;
+        const latestScore = toNumber(student.latest.score);
+        const avgScore = toNumber(student.avgScore);
+        const level = levelForScore(avgScore).replace('Nivel ', 'N');
+        const weak = weakAreasText(student.latest.byArea);
+        const fill = localIndex % 2 === 0 ? [0.985, 0.99, 1] : colors.white;
+        pdfRect(opsStudent, marginX, yRow - 22, rightX - marginX, 28, fill);
+        pdfText(opsStudent, String(rowNumber), marginX + 6, yRow - 5, 7.4, true, colors.text, 4);
+        pdfText(opsStudent, student.group || 'Sin grupo', marginX + 26, yRow - 5, 7.4, true, colors.text, 8);
+        pdfText(opsStudent, student.studentName || 'Sin nombre', marginX + 72, yRow - 5, 7.4, true, colors.text, 28);
+        pdfText(opsStudent, String(student.attempts), marginX + 242, yRow - 5, 7.4, false, colors.text, 5);
+        pdfText(opsStudent, `${latestScore}%`, marginX + 275, yRow - 5, 7.6, true, colors.text, 6);
+        pdfText(opsStudent, `${avgScore}%`, marginX + 322, yRow - 5, 7.6, true, colors.text, 8);
+        pdfText(opsStudent, level, marginX + 372, yRow - 5, 7.2, false, colors.text, 15);
+        pdfText(opsStudent, weak, marginX + 452, yRow - 5, 7.0, false, colors.muted, 24);
+        const barWidth = rightX - marginX;
+        pdfRect(opsStudent, marginX, yRow - 24, barWidth, 4.5, colors.line);
+        pdfRect(opsStudent, marginX, yRow - 24, barWidth * Math.max(0, Math.min(latestScore, 100)) / 100, 4.5, colors.primary);
+        yRow -= 32;
+      });
+    }
+
+    pdfText(opsStudent, `Pagina ${pageNumber} de ${totalPdfPages}`, marginX, 30, 8, false, colors.muted);
+    pages.push(opsStudent.join('\n'));
   }
 
-  pdfText(ops2, 'Pagina 2 de 3', marginX, 30, 8, false, colors.muted);
-  pages.push(ops2.join('\n'));
-
-  const ops3 = [];
-  pdfRect(ops3, 0, 0, pageWidth, pageHeight, colors.white);
-  pdfText(ops3, 'LECTURA PEDAGOGICA Y RECOMENDACIONES', marginX, 804, 13, true, colors.primary);
-  pdfText(ops3, 'Resumen institucional para orientar planes de mejoramiento.', marginX, 782, 8.8, false, colors.muted, 112);
+  const opsLast = [];
+  const lastPageNumber = totalPdfPages;
+  pdfRect(opsLast, 0, 0, pageWidth, pageHeight, colors.white);
+  pdfText(opsLast, 'LECTURA PEDAGOGICA Y RECOMENDACIONES', marginX, 804, 13, true, colors.primary);
+  pdfText(opsLast, 'Resumen institucional para orientar planes de mejoramiento.', marginX, 782, 8.8, false, colors.muted, 112);
 
   const recommendationItems = [
     ['PROMEDIO GENERAL', `El promedio general filtrado es ${summary.avgScore}%, con nivel predominante ${summary.mainLevel}.`],
-    ['AREA FORTALEZA', `El area fortaleza es ${summary.bestArea}. Conviene identificar las estrategias que estan funcionando y replicarlas en las areas con menor desempeno.`],
-    ['AREA PRIORITARIA', `El area prioritaria es ${summary.weakArea}. Se recomienda disenar refuerzos cortos por competencias, revisar distractores frecuentes y programar actividades de retroalimentacion.`],
+    ['AREA FORTALEZA', `El area fortaleza es ${summary.bestArea}. Conviene identificar estrategias que funcionan y replicarlas en las areas con menor desempeno.`],
+    ['AREA PRIORITARIA', `El area prioritaria es ${summary.weakArea}. Se recomienda disenar refuerzos cortos por competencias, revisar distractores frecuentes y programar retroalimentacion.`],
     ['USO PEDAGOGICO', 'Usar estos datos como lectura pedagogica interna. No reemplaza el calculo oficial del ICFES, pero orienta planes de mejoramiento institucional.']
   ];
 
-  let y3 = 730;
+  let yLast = 730;
   recommendationItems.forEach(item => {
-    pdfRoundRect(ops3, marginX, y3 - 72, rightX - marginX, 58, 8, colors.panel, colors.line);
-    pdfText(ops3, item[0], marginX + 14, y3 - 32, 8.3, true, colors.primary, 38);
-    pdfText(ops3, item[1], marginX + 14, y3 - 50, 8.4, false, colors.text, 102);
-    y3 -= 82;
+    pdfRoundRect(opsLast, marginX, yLast - 72, rightX - marginX, 58, 8, colors.panel, colors.line);
+    pdfText(opsLast, item[0], marginX + 14, yLast - 32, 8.3, true, colors.primary, 38);
+    pdfText(opsLast, item[1], marginX + 14, yLast - 50, 8.4, false, colors.text, 102);
+    yLast -= 82;
   });
 
-  pdfRoundRect(ops3, marginX, 285, rightX - marginX, 88, 8, [0.95, 0.98, 1], colors.line);
-  pdfText(ops3, 'RECOMENDACION DE ACCION', marginX + 14, 348, 8.5, true, colors.primary, 40);
-  pdfText(ops3, '1. Socializar resultados por grupo y area.  2. Priorizar competencias con mayor dificultad.  3. Programar ejercicios de entrenamiento con retroalimentacion.  4. Revisar nuevamente el avance en el proximo simulacro.', marginX + 14, 326, 8.2, false, colors.text, 96);
+  pdfRoundRect(opsLast, marginX, 285, rightX - marginX, 88, 8, colors.softBlue, colors.line);
+  pdfText(opsLast, 'RECOMENDACION DE ACCION', marginX + 14, 348, 8.5, true, colors.primary, 40);
+  pdfText(opsLast, '1. Socializar resultados por grupo y area. 2. Priorizar competencias con mayor dificultad. 3. Programar ejercicios de entrenamiento con retroalimentacion. 4. Revisar nuevamente el avance en el proximo simulacro.', marginX + 14, 326, 8.2, false, colors.text, 96);
 
-  pdfText(ops3, 'Herramienta educativa independiente. No oficial ni afiliada al ICFES.', marginX, 56, 8.2, false, colors.muted, 110);
-  pdfText(ops3, 'Pagina 3 de 3', marginX, 30, 8, false, colors.muted);
-  pages.push(ops3.join('\n'));
+  pdfText(opsLast, 'Herramienta educativa independiente. No oficial ni afiliada al ICFES.', marginX, 56, 8.2, false, colors.muted, 110);
+  pdfText(opsLast, `Pagina ${lastPageNumber} de ${totalPdfPages}`, marginX, 30, 8, false, colors.muted);
+  pages.push(opsLast.join('\n'));
 
   return buildPdfFromStreams(pages, pageWidth, pageHeight);
 }
