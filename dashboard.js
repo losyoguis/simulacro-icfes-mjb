@@ -288,12 +288,12 @@ function createInstitutionalDashboardPdf(records, details, summary) {
     criticalRows.forEach(row => { if (y > 65) { pdfDashboardBar(ops, row.label, row.pct, row.detail, marginX, y, 250, colors.danger, colors); y -= 28; } });
   }
 
-  pdfText(ops, 'Pagina 1 de 2', marginX, 30, 8, false, colors.muted);
+  pdfText(ops, 'Pagina 1 de 3', marginX, 30, 8, false, colors.muted);
   pages.push(ops.join('\n'));
 
   const ops2 = [];
   pdfRect(ops2, 0, 0, pageWidth, pageHeight, colors.white);
-  pdfText(ops2, 'SEGUIMIENTO INDIVIDUAL Y RECOMENDACIONES', marginX, 804, 13, true, colors.primary);
+  pdfText(ops2, 'SEGUIMIENTO INDIVIDUAL', marginX, 804, 13, true, colors.primary);
   pdfText(ops2, `Promedio general filtrado: ${summary.avgScore}% | Area fortaleza: ${summary.bestArea} | Area prioritaria: ${summary.weakArea}`, marginX, 782, 8.7, false, colors.muted, 110);
 
   let y2 = 748;
@@ -315,18 +315,36 @@ function createInstitutionalDashboardPdf(records, details, summary) {
     });
   }
 
-  y2 = Math.max(y2 - 12, 112);
-  pdfText(ops2, 'LECTURA PEDAGOGICA', marginX, y2, 10.8, true, colors.text);
-  y2 -= 22;
-  const recommendations = [
-    `El promedio general filtrado es ${summary.avgScore}%, con nivel predominante ${summary.mainLevel}.`,
-    `El area prioritaria es ${summary.weakArea}. Se recomienda disenar refuerzos cortos por competencias y revisar distractores frecuentes.`,
-    `Usar estos datos como lectura pedagogica interna. No reemplaza el calculo oficial del ICFES, pero orienta planes de mejoramiento institucional.`
-  ];
-  recommendations.forEach(line => { pdfText(ops2, line, marginX, y2, 8.6, false, colors.muted, 112); y2 -= 30; });
-  pdfText(ops2, 'Herramienta educativa independiente. No oficial ni afiliada al ICFES.', marginX, 56, 8.2, false, colors.muted, 110);
-  pdfText(ops2, 'Pagina 2 de 2', marginX, 30, 8, false, colors.muted);
+  pdfText(ops2, 'Pagina 2 de 3', marginX, 30, 8, false, colors.muted);
   pages.push(ops2.join('\n'));
+
+  const ops3 = [];
+  pdfRect(ops3, 0, 0, pageWidth, pageHeight, colors.white);
+  pdfText(ops3, 'LECTURA PEDAGOGICA Y RECOMENDACIONES', marginX, 804, 13, true, colors.primary);
+  pdfText(ops3, 'Resumen institucional para orientar planes de mejoramiento.', marginX, 782, 8.8, false, colors.muted, 112);
+
+  const recommendationItems = [
+    ['PROMEDIO GENERAL', `El promedio general filtrado es ${summary.avgScore}%, con nivel predominante ${summary.mainLevel}.`],
+    ['AREA FORTALEZA', `El area fortaleza es ${summary.bestArea}. Conviene identificar las estrategias que estan funcionando y replicarlas en las areas con menor desempeno.`],
+    ['AREA PRIORITARIA', `El area prioritaria es ${summary.weakArea}. Se recomienda disenar refuerzos cortos por competencias, revisar distractores frecuentes y programar actividades de retroalimentacion.`],
+    ['USO PEDAGOGICO', 'Usar estos datos como lectura pedagogica interna. No reemplaza el calculo oficial del ICFES, pero orienta planes de mejoramiento institucional.']
+  ];
+
+  let y3 = 730;
+  recommendationItems.forEach(item => {
+    pdfRoundRect(ops3, marginX, y3 - 72, rightX - marginX, 58, 8, colors.panel, colors.line);
+    pdfText(ops3, item[0], marginX + 14, y3 - 32, 8.3, true, colors.primary, 38);
+    pdfText(ops3, item[1], marginX + 14, y3 - 50, 8.4, false, colors.text, 102);
+    y3 -= 82;
+  });
+
+  pdfRoundRect(ops3, marginX, 285, rightX - marginX, 88, 8, [0.95, 0.98, 1], colors.line);
+  pdfText(ops3, 'RECOMENDACION DE ACCION', marginX + 14, 348, 8.5, true, colors.primary, 40);
+  pdfText(ops3, '1. Socializar resultados por grupo y area.  2. Priorizar competencias con mayor dificultad.  3. Programar ejercicios de entrenamiento con retroalimentacion.  4. Revisar nuevamente el avance en el proximo simulacro.', marginX + 14, 326, 8.2, false, colors.text, 96);
+
+  pdfText(ops3, 'Herramienta educativa independiente. No oficial ni afiliada al ICFES.', marginX, 56, 8.2, false, colors.muted, 110);
+  pdfText(ops3, 'Pagina 3 de 3', marginX, 30, 8, false, colors.muted);
+  pages.push(ops3.join('\n'));
 
   return buildPdfFromStreams(pages, pageWidth, pageHeight);
 }
