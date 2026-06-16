@@ -6,6 +6,8 @@ const DASHBOARD_SPREADSHEET_ID = "17FbkF9BulfEfAAoDFNkljdsXWjXQOH_cBB3r-Iizjxs";
 const DASHBOARD_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${DASHBOARD_SPREADSHEET_ID}/edit`;
 const DASHBOARD_ALLOWED_GROUPS = ["11-1", "11-2", "11-3"];
 const DASHBOARD_ACCESS_PASSWORD = "MJB-ICFES-2026";
+const DASHBOARD_TEACHER_USER = "docente";
+const DASHBOARD_TEACHER_PASSWORD = "MJB-DOCENTE-2026";
 const DASHBOARD_ACCESS_KEY = "icfes_dashboard_institucional_autorizado_v1";
 const DASHBOARD_ACCESS_DURATION_MS = 4 * 60 * 60 * 1000;
 
@@ -58,25 +60,44 @@ function initDashboardAccessGate() {
   showDashboardAccessGate();
 }
 
-function hasDashboardAccess() {
+function getDashboardAccessPayload() {
   try {
     const raw = sessionStorage.getItem(DASHBOARD_ACCESS_KEY);
-    if (!raw) return false;
+    if (!raw) return null;
     const data = JSON.parse(raw);
     if (!data || data.ok !== true || Number(data.expiresAt) < Date.now()) {
       sessionStorage.removeItem(DASHBOARD_ACCESS_KEY);
-      return false;
+      return null;
     }
-    return true;
+    return data;
   } catch (error) {
-    return false;
+    return null;
   }
 }
 
-function grantDashboardAccess() {
+function getDashboardAccessRole() {
+  const data = getDashboardAccessPayload();
+  return data && data.role ? data.role : "";
+}
+
+function hasDashboardAccess() {
+  return Boolean(getDashboardAccessPayload());
+}
+
+function isDashboardTeacherRole() {
+  return getDashboardAccessRole() === "teacher";
+}
+
+function isDashboardAdminRole() {
+  const role = getDashboardAccessRole();
+  return !role || role === "admin";
+}
+
+function grantDashboardAccess(role = "admin") {
   try {
     sessionStorage.setItem(DASHBOARD_ACCESS_KEY, JSON.stringify({
       ok: true,
+      role,
       createdAt: Date.now(),
       expiresAt: Date.now() + DASHBOARD_ACCESS_DURATION_MS
     }));
@@ -87,6 +108,14 @@ function grantDashboardAccess() {
 
 function isDashboardPasswordValid(value) {
   return String(value || "").trim() === DASHBOARD_ACCESS_PASSWORD;
+}
+
+function getDashboardRoleFromCredentials(user, password) {
+  const normalizedUser = String(user || "").trim().toLowerCase();
+  const rawPassword = String(password || "").trim();
+  if ((!normalizedUser || normalizedUser === "admin" || normalizedUser === "administrador") && rawPassword === DASHBOARD_ACCESS_PASSWORD) return "admin";
+  if ([DASHBOARD_TEACHER_USER, "profesor", "docentes", "teacher"].includes(normalizedUser) && rawPassword === DASHBOARD_TEACHER_PASSWORD) return "teacher";
+  return "";
 }
 
 function showDashboardAccessGate() {
@@ -100,9 +129,13 @@ function showDashboardAccessGate() {
     <section class="dashboard-utility-card dashboard-access-card" role="dialog" aria-modal="true" aria-labelledby="dashboardAccessTitle" aria-describedby="dashboardAccessHelp">
       <p class="eyebrow">Acceso protegido</p>
       <h2 id="dashboardAccessTitle">Dashboard institucional</h2>
-      <p id="dashboardAccessHelp">Para ver los resultados institucionales debes ingresar la misma clave usada para borrar los datos.</p>
+      <p id="dashboardAccessHelp">Ingresa como administrador o como docente. El usuario docente solo puede observar el dashboard.</p>
       <label class="field">
-        <span>Clave institucional</span>
+        <span>Usuario</span>
+        <input id="dashboardAccessUser" type="text" autocomplete="username" placeholder="admin o docente" />
+      </label>
+      <label class="field">
+        <span>Clave</span>
         <input id="dashboardAccessPassword" type="password" autocomplete="current-password" placeholder="Escribe la clave" />
       </label>
       <div class="dashboard-utility-status" id="dashboardAccessStatus" role="status"></div>
@@ -114,18 +147,20 @@ function showDashboardAccessGate() {
   `;
 
   document.body.appendChild(overlay);
+  const user = overlay.querySelector("#dashboardAccessUser");
   const password = overlay.querySelector("#dashboardAccessPassword");
   const status = overlay.querySelector("#dashboardAccessStatus");
   const confirmBtn = overlay.querySelector("#dashboardAccessConfirm");
   const submit = () => {
-    if (!isDashboardPasswordValid(password.value)) {
-      status.textContent = "Clave incorrecta. Verifica la clave institucional.";
+    const role = getDashboardRoleFromCredentials(user.value, password.value);
+    if (!role) {
+      status.textContent = "Usuario o clave incorrectos. Verifica las credenciales institucionales.";
       status.dataset.kind = "error";
       password.value = "";
       password.focus();
       return;
     }
-    grantDashboardAccess();
+    grantDashboardAccess(role);
     overlay.remove();
     document.body.classList.remove("dashboard-locked");
     initDashboard();
@@ -153,6 +188,7 @@ function initDashboard() {
 
   els.refreshBtn.addEventListener("click", loadDashboardData);
   els.printBtn.addEventListener("click", exportDashboardPdf);
+  applyDashboardRoleRestrictions();
   if (els.deleteBtn) els.deleteBtn.addEventListener("click", deleteSheetData);
   if (els.studentTable) els.studentTable.addEventListener("click", handleStudentTablePdfClick);
   [els.group, els.section, els.student, els.from, els.to].filter(Boolean).forEach(input => input.addEventListener("change", renderDashboard));
@@ -166,6 +202,13 @@ function initDashboard() {
   });
 
   loadDashboardData();
+}
+
+
+function applyDashboardRoleRestrictions() {
+  const teacher = isDashboardTeacherRole();
+  if (els.deleteBtn) els.deleteBtn.classList.toggle("hidden", teacher);
+  if (els.sheets) els.sheets.classList.toggle("hidden", teacher);
 }
 
 function setStatus(message, kind = "info") {
@@ -501,6 +544,7 @@ function loadDashboardData() {
   els.refreshBtn.disabled = true;
   els.sheets.href = DASHBOARD_SPREADSHEET_URL;
   els.sheets.classList.remove("hidden");
+  applyDashboardRoleRestrictions();
 
   loadDashboardDataFromAppsScript()
     .catch(error => {
@@ -520,6 +564,7 @@ function loadDashboardData() {
         els.sheets.href = data.spreadsheetUrl;
         els.sheets.classList.remove("hidden");
       }
+      applyDashboardRoleRestrictions();
     })
     .catch(error => {
       console.error(error);

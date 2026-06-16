@@ -51,6 +51,8 @@ const INSTITUTION_SHORT_NAME = "I.E. Manuel J. Betancur";
 const REPORT_AUTOSEND_ON_FINISH = true;
 const REPORT_APP_VERSION = "ICFES-DIGITAL-SABER-11-IA-v15-notebook-sheets";
 const DASHBOARD_ACCESS_PASSWORD = "MJB-ICFES-2026";
+const DASHBOARD_TEACHER_USER = "docente";
+const DASHBOARD_TEACHER_PASSWORD = "MJB-DOCENTE-2026";
 const DASHBOARD_ACCESS_KEY = "icfes_dashboard_institucional_autorizado_v1";
 const DASHBOARD_ACCESS_DURATION_MS = 4 * 60 * 60 * 1000;
 const GOOGLE_SITES_FULLSCREEN_NOTICE_KEY = "simulador_icfes_google_sites_fullscreen_notice_v1";
@@ -65,6 +67,7 @@ const fullscreenBtn = document.getElementById("fullscreenBtn");
 const tipsBtn = document.getElementById("tipsBtn");
 const instructionsBtn = document.getElementById("instructionsBtn");
 const dashboardBtn = document.getElementById("dashboardBtn");
+const teacherDashboardBtn = document.getElementById("teacherDashboardBtn");
 
 let timerInterval = null;
 let state = {
@@ -1293,6 +1296,7 @@ function bindGlobalEvents() {
   if (tipsBtn) tipsBtn.addEventListener("click", openTipsModal);
   if (instructionsBtn) instructionsBtn.addEventListener("click", openInstructionsModal);
   if (dashboardBtn) dashboardBtn.addEventListener("click", openDashboardAccessDialog);
+if (teacherDashboardBtn) teacherDashboardBtn.addEventListener("click", openTeacherDashboardAccessDialog);
   if (fullscreenBtn) fullscreenBtn.addEventListener("click", () => requestGoogleSitesFullscreen());
 
   document.addEventListener("click", event => {
@@ -1398,15 +1402,17 @@ function performLogout() {
 function updateHeaderSessionButtons() {
   const loggedIn = hasValidStudent();
   if (logoutBtn) logoutBtn.classList.toggle("hidden", !loggedIn);
+  if (teacherDashboardBtn) teacherDashboardBtn.classList.remove("hidden");
   if (dashboardBtn) dashboardBtn.classList.remove("hidden");
   updateFullscreenControls();
 }
 
 
-function grantDashboardAccess() {
+function grantDashboardAccess(role = "admin") {
   try {
     sessionStorage.setItem(DASHBOARD_ACCESS_KEY, JSON.stringify({
       ok: true,
+      role,
       createdAt: Date.now(),
       expiresAt: Date.now() + DASHBOARD_ACCESS_DURATION_MS
     }));
@@ -1419,6 +1425,11 @@ function isDashboardPasswordValid(value) {
   return String(value || "").trim() === DASHBOARD_ACCESS_PASSWORD;
 }
 
+function isTeacherCredentialValid(user, password) {
+  const normalizedUser = String(user || "").trim().toLowerCase();
+  return [DASHBOARD_TEACHER_USER, "profesor", "docentes", "teacher"].includes(normalizedUser) && String(password || "").trim() === DASHBOARD_TEACHER_PASSWORD;
+}
+
 function hasDashboardAccess() {
   try {
     const payload = JSON.parse(sessionStorage.getItem(DASHBOARD_ACCESS_KEY) || "null");
@@ -1426,6 +1437,64 @@ function hasDashboardAccess() {
   } catch (error) {
     return false;
   }
+}
+
+
+function openTeacherDashboardAccessDialog() {
+  const existing = document.getElementById("teacherDashboardAccessDialog");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay dashboard-access-dialog";
+  overlay.id = "teacherDashboardAccessDialog";
+  overlay.setAttribute("role", "presentation");
+  overlay.innerHTML = `
+    <section class="dialog-card dashboard-access-card" role="dialog" aria-modal="true" aria-labelledby="teacherDashboardAccessTitle" aria-describedby="teacherDashboardAccessHelp">
+      <button class="dialog-close" type="button" aria-label="Cerrar">×</button>
+      <p class="eyebrow">Acceso docente</p>
+      <h2 id="teacherDashboardAccessTitle">Dashboard para docentes</h2>
+      <p id="teacherDashboardAccessHelp">Ingresa el usuario docente para observar el dashboard institucional en modo solo lectura.</p>
+      <label class="field">
+        <span>Usuario</span>
+        <input id="teacherDashboardUser" type="text" autocomplete="username" placeholder="docente" />
+      </label>
+      <label class="field">
+        <span>Clave</span>
+        <input id="teacherDashboardPassword" type="password" autocomplete="current-password" placeholder="Escribe la clave docente" />
+      </label>
+      <div class="form-error" id="teacherDashboardAccessError" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <button class="secondary-btn" type="button" data-teacher-dashboard-cancel>Cancelar</button>
+        <button class="primary-btn" type="button" id="teacherDashboardAccessConfirm">Ingresar al dashboard</button>
+      </div>
+    </section>
+  `;
+
+  document.body.appendChild(overlay);
+  const user = overlay.querySelector("#teacherDashboardUser");
+  const password = overlay.querySelector("#teacherDashboardPassword");
+  const error = overlay.querySelector("#teacherDashboardAccessError");
+  const close = () => overlay.remove();
+  const submit = () => {
+    if (!isTeacherCredentialValid(user.value, password.value)) {
+      error.textContent = "Usuario o clave docente incorrectos.";
+      password.value = "";
+      password.focus();
+      return;
+    }
+    grantDashboardAccess("teacher");
+    window.location.href = "dashboard.html";
+  };
+
+  overlay.querySelector(".dialog-close").addEventListener("click", close);
+  overlay.querySelector("[data-teacher-dashboard-cancel]").addEventListener("click", close);
+  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
+  overlay.addEventListener("keydown", event => {
+    if (event.key === "Escape") close();
+    if (event.key === "Enter") submit();
+  });
+  overlay.querySelector("#teacherDashboardAccessConfirm").addEventListener("click", submit);
+  setTimeout(() => user.focus(), 50);
 }
 
 function openDashboardAccessDialog() {
