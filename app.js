@@ -82,10 +82,12 @@ let state = {
   student: null,
   remainingSeconds: 0,
   finished: false,
-  secureExam: null
+  secureExam: null,
+  timerWarningsShown: {}
 };
 
 let reportEmailInProgress = false;
+let lastZoomInteractionAt = 0;
 
 const ACTIVE_WORK_MODE = "simulacro";
 const ADMIN_MODE_CONFIG_KEY = "simulador_icfes_saber11_admin_modo_trabajo_v1";
@@ -101,6 +103,8 @@ const WORK_MODE_LABELS = {
 const SECURE_EXAM_MAX_WARNINGS = 3;
 const SECURE_EXAM_COOLDOWN_MS = 1800;
 const SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS = 350;
+const SECURE_EXAM_ZOOM_IGNORE_MS = 2500;
+const TIMER_WARNING_SECONDS = new Set([30 * 60, 10 * 60, 5 * 60, 60]);
 
 function getAdminWorkModeConfig() {
   return storageGet(ADMIN_MODE_CONFIG_KEY, ADMIN_MODE_SIMULACRO_ONLY) === ADMIN_MODE_TRAINING_AND_SIMULACRO
@@ -224,6 +228,36 @@ function getSecureExamEventLabel(type) {
   }[type] || "Evento de seguridad";
 }
 
+function noteSecureZoomInteraction() {
+  lastZoomInteractionAt = Date.now();
+}
+
+function isRecentSecureZoomInteraction(extraMs = SECURE_EXAM_ZOOM_IGNORE_MS) {
+  return Date.now() - Number(lastZoomInteractionAt || 0) <= extraMs;
+}
+
+function isBrowserZoomShortcut(event) {
+  if (!event || !(event.ctrlKey || event.metaKey)) return false;
+  const key = String(event.key || "").toLowerCase();
+  const code = String(event.code || "").toLowerCase();
+  return ["+", "=", "-", "_", "0"].includes(key)
+    || ["equal", "minus", "digit0", "numpadadd", "numpadsubtract", "numpad0"].includes(code);
+}
+
+function shouldIgnoreSecurityEventForZoom(type) {
+  return ["tab", "blur", "fullscreen"].includes(type) && isRecentSecureZoomInteraction();
+}
+
+function handleSecureExamWheel(event) {
+  if (!shouldMonitorSecureExam()) return;
+  if (event && event.ctrlKey) noteSecureZoomInteraction();
+}
+
+function handleSecureExamGesture() {
+  if (!shouldMonitorSecureExam()) return;
+  noteSecureZoomInteraction();
+}
+
 function startSecureAwayTimer() {
   const secure = ensureSecureExamState();
   if (!secure.awayStartedAt) secure.awayStartedAt = Date.now();
@@ -314,6 +348,18 @@ function promptSecureFullscreenRestore() {
 
 function recordSecureExamEvent(type, description, options = {}) {
   if (!shouldMonitorSecureExam()) return;
+  if (shouldIgnoreSecurityEventForZoom(type)) {
+    const secure = ensureSecureExamState();
+    secure.events.push({
+      at: new Date().toISOString(),
+      type: "system",
+      description: "Zoom permitido: no se contabilizó como salida de la plataforma."
+    });
+    secure.events = secure.events.slice(-20);
+    saveState();
+    updateSecureExamBadge();
+    return;
+  }
   if (!options.force && document.querySelector(".dialog-overlay")) return;
 
   const secure = ensureSecureExamState();
@@ -384,7 +430,7 @@ function updateSecureExamBadge() {
 
 function handleSecureExamVisibilityChange() {
   if (document.visibilityState === "hidden") {
-    if (shouldMonitorSecureExam()) {
+    if (shouldMonitorSecureExam() && !isRecentSecureZoomInteraction()) {
       startSecureAwayTimer();
       recordSecureExamEvent("tab", "El estudiante cambió de pestaña, minimizó la ventana o salió de la vista del simulacro.");
     }
@@ -392,13 +438,17 @@ function handleSecureExamVisibilityChange() {
   } else {
     stopSecureAwayTimer();
     updateSecureExamBadge();
-    window.setTimeout(promptSecureFullscreenRestore, SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS);
+    window.setTimeout(
+      isRecentSecureZoomInteraction() ? restoreSecureExamFullscreen : promptSecureFullscreenRestore,
+      SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS
+    );
   }
 }
 
 function handleSecureExamBlur() {
   if (!shouldMonitorSecureExam()) return;
   if (document.querySelector(".dialog-overlay")) return;
+  if (isRecentSecureZoomInteraction()) return;
   startSecureAwayTimer();
   recordSecureExamEvent("blur", "La ventana del simulacro perdió el foco durante la presentación.");
 }
@@ -406,7 +456,10 @@ function handleSecureExamBlur() {
 function handleSecureExamFocus() {
   stopSecureAwayTimer();
   updateSecureExamBadge();
-  window.setTimeout(promptSecureFullscreenRestore, SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS);
+  window.setTimeout(
+    isRecentSecureZoomInteraction() ? restoreSecureExamFullscreen : promptSecureFullscreenRestore,
+    SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS
+  );
 }
 
 function handleSecureExamFullscreenChange() {
@@ -420,6 +473,18 @@ function handleSecureExamFullscreenChange() {
     return;
   }
   if (secure.fullscreenRequested && !isFullscreenActive()) {
+    if (isRecentSecureZoomInteraction()) {
+      secure.events.push({
+        at: new Date().toISOString(),
+        type: "system",
+        description: "Zoom permitido dentro de la prueba: no se registró como salida de pantalla completa."
+      });
+      secure.events = secure.events.slice(-20);
+      saveState();
+      updateSecureExamBadge();
+      window.setTimeout(restoreSecureExamFullscreen, SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS);
+      return;
+    }
     recordSecureExamEvent("fullscreen", "El estudiante salió de pantalla completa durante el simulacro.", { force: true });
     window.setTimeout(promptSecureFullscreenRestore, SECURE_EXAM_FULLSCREEN_RESTORE_DELAY_MS);
   }
@@ -427,6 +492,10 @@ function handleSecureExamFullscreenChange() {
 
 function handleSecureExamKeydown(event) {
   if (!shouldMonitorSecureExam()) return;
+  if (isBrowserZoomShortcut(event)) {
+    noteSecureZoomInteraction();
+    return;
+  }
   const key = String(event.key || "").toLowerCase();
   const blocked = event.key === "F12"
     || (event.ctrlKey && ["c", "v", "x", "u", "s", "p", "n", "t", "w", "r"].includes(key))
@@ -636,6 +705,30 @@ function renderSecurityFinalAlert(result) {
       </div>
       <button class="security-alert-action-btn" type="button" id="securityNewAttemptBtn">Nuevo Intento</button>
     </section>
+  `;
+}
+
+function shouldShowDetailedAnswers(result) {
+  return !isSecurityFinalAlertNeeded(result);
+}
+
+function renderDetailedReviewSection(result, review) {
+  if (!shouldShowDetailedAnswers(result)) {
+    return `
+      <section class="review-locked-card" aria-label="Revisión bloqueada por seguridad">
+        <div class="review-locked-icon" aria-hidden="true">🔒</div>
+        <div>
+          <p class="eyebrow">Revisión bloqueada</p>
+          <h3>Las respuestas no se muestran en este intento</h3>
+          <p>El intento fue finalizado automáticamente por superar el límite de advertencias de seguridad. Por esa razón, la revisión detallada, la respuesta correcta y la explicación de cada pregunta quedan reservadas para revisión del docente.</p>
+        </div>
+      </section>
+    `;
+  }
+  return `
+    <h3 style="margin-top:24px">Revisión detallada por pregunta</h3>
+    <p class="footer-note">Esta sección se conserva en pantalla para revisión pedagógica. El PDF descargable contiene el resumen general y los gráficos, sin la revisión detallada por pregunta. El backend de Google Sheets consolida los resultados para el informe institucional de la I.E. Manuel J. Betancur.</p>
+    <div class="review-list">${review}</div>
   `;
 }
 
@@ -1232,6 +1325,9 @@ function bindGlobalEvents() {
   document.addEventListener("fullscreenchange", handleSecureExamFullscreenChange);
   document.addEventListener("webkitfullscreenchange", handleSecureExamFullscreenChange);
   document.addEventListener("keydown", handleSecureExamKeydown, true);
+  document.addEventListener("wheel", handleSecureExamWheel, { capture: true, passive: true });
+  document.addEventListener("gesturestart", handleSecureExamGesture, { capture: true, passive: true });
+  document.addEventListener("gesturechange", handleSecureExamGesture, { capture: true, passive: true });
   document.addEventListener("contextmenu", handleSecureExamContextMenu, true);
 }
 
@@ -1291,7 +1387,8 @@ function performLogout() {
     student: null,
     remainingSeconds: 0,
     finished: false,
-    secureExam: createSecureExamState()
+    secureExam: createSecureExamState(),
+    timerWarningsShown: {}
   };
   updateHeaderSessionButtons();
   renderAccess();
@@ -2208,7 +2305,8 @@ function startScope(scope) {
     student: { ...state.student },
     remainingSeconds: state.mode === "entrenamiento" ? 0 : session.durationMinutes * 60,
     finished: false,
-    secureExam: createSecureExamState()
+    secureExam: createSecureExamState(),
+    timerWarningsShown: {}
   };
 
   homeBtn.classList.remove("hidden");
@@ -2677,9 +2775,7 @@ function renderResults() {
       </div>
       <div id="emailReportStatus" class="email-report-status" role="status" aria-live="polite"></div>
 
-      <h3 style="margin-top:24px">Revisión detallada por pregunta</h3>
-      <p class="footer-note">Esta sección se conserva en pantalla para revisión pedagógica. El PDF descargable contiene el resumen general y los gráficos, sin la revisión detallada por pregunta. El backend de Google Sheets consolida los resultados para el informe institucional de la I.E. Manuel J. Betancur.</p>
-      <div class="review-list">${review}</div>
+      ${renderDetailedReviewSection(result, review)}
     </section>
   `;
 
@@ -2768,25 +2864,88 @@ function renderAreaChart(result) {
   `;
 }
 
+function getTimerWarningTitle(seconds) {
+  if (seconds <= 0) return "Tiempo finalizado";
+  if (seconds >= 60) {
+    const minutes = Math.round(seconds / 60);
+    return `Quedan ${minutes} minutos`;
+  }
+  return `Quedan ${seconds} segundos`;
+}
+
+function getTimerWarningMessage(seconds) {
+  if (seconds <= 0) {
+    return "El tiempo de esta sección terminó. El sistema mostrará el informe del intento.";
+  }
+  if (seconds === 30 * 60) {
+    return "Organiza tu tiempo: revisa las preguntas pendientes y prioriza las que puedas responder con seguridad.";
+  }
+  if (seconds === 10 * 60) {
+    return "Últimos 10 minutos: verifica tus respuestas y evita dejar preguntas sin marcar.";
+  }
+  if (seconds === 5 * 60) {
+    return "Quedan 5 minutos: revisa rápidamente las preguntas marcadas o pendientes.";
+  }
+  if (seconds === 60) {
+    return "Último minuto: asegúrate de finalizar correctamente el intento.";
+  }
+  return "Continúa la prueba sin salir de la plataforma.";
+}
+
+function showTimerWarningModal(seconds, options = {}) {
+  const previous = document.getElementById("timerWarningModal");
+  if (previous) previous.remove();
+
+  const modal = document.createElement("aside");
+  modal.id = "timerWarningModal";
+  modal.className = `timer-warning-modal ${options.final ? "timer-warning-final" : ""}`;
+  modal.setAttribute("role", "status");
+  modal.setAttribute("aria-live", "polite");
+  modal.innerHTML = `
+    <div class="timer-warning-icon">⏰</div>
+    <div class="timer-warning-body">
+      <strong>${getTimerWarningTitle(seconds)}</strong>
+      <span>${getTimerWarningMessage(seconds)}</span>
+    </div>
+    <button class="timer-warning-close" type="button" aria-label="Cerrar aviso de tiempo">×</button>
+  `;
+
+  document.body.appendChild(modal);
+  const close = () => modal.remove();
+  const closeBtn = modal.querySelector(".timer-warning-close");
+  if (closeBtn) closeBtn.addEventListener("click", close);
+  window.setTimeout(() => {
+    if (document.body.contains(modal)) close();
+  }, options.final ? 9000 : 12000);
+}
+
+function maybeShowTimerWarning(seconds) {
+  if (!TIMER_WARNING_SECONDS.has(seconds)) return;
+  if (!state.timerWarningsShown || typeof state.timerWarningsShown !== "object") state.timerWarningsShown = {};
+  const key = `s${seconds}`;
+  if (state.timerWarningsShown[key]) return;
+  state.timerWarningsShown[key] = new Date().toISOString();
+  showTimerWarningModal(seconds);
+}
+
 function startTimer() {
   clearTimer();
+  if (!state.timerWarningsShown || typeof state.timerWarningsShown !== "object") state.timerWarningsShown = {};
   timerInterval = setInterval(() => {
     state.remainingSeconds = Math.max(0, state.remainingSeconds - 1);
     const timerText = document.getElementById("timerText");
     if (timerText) timerText.textContent = formatSeconds(state.remainingSeconds);
-    if ([30 * 60, 10 * 60, 5 * 60, 60].includes(state.remainingSeconds)) {
-      alert(`Atención: quedan ${formatSeconds(state.remainingSeconds)}.`);
-    }
+    maybeShowTimerWarning(state.remainingSeconds);
     if (state.remainingSeconds <= 0) {
       stopSecureAwayTimer();
       clearTimer();
-      alert("El tiempo ha finalizado. Se mostrarán los resultados.");
       state.finished = true;
       state.finishedAt = new Date().toISOString();
       saveAttemptToHistory();
       storageRemove(STORAGE_KEY);
       renderResults();
       scrollToPageTop();
+      showTimerWarningModal(0, { final: true });
     } else {
       saveState();
     }
@@ -2921,6 +3080,7 @@ function resumeSavedAttempt() {
       renderAccess();
       return;
     }
+    if (!state.timerWarningsShown || typeof state.timerWarningsShown !== "object") state.timerWarningsShown = {};
     ensureSecureExamState();
     homeBtn.classList.remove("hidden");
     renderExam({ scrollToTimer: true });
