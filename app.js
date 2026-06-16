@@ -67,6 +67,7 @@ const fullscreenBtn = document.getElementById("fullscreenBtn");
 const tipsBtn = document.getElementById("tipsBtn");
 const instructionsBtn = document.getElementById("instructionsBtn");
 const dashboardBtn = document.getElementById("dashboardBtn");
+const studentDashboardBtn = document.getElementById("studentDashboardBtn");
 const teacherDashboardBtn = document.getElementById("teacherDashboardBtn");
 
 let timerInterval = null;
@@ -1296,6 +1297,7 @@ function bindGlobalEvents() {
   if (tipsBtn) tipsBtn.addEventListener("click", openTipsModal);
   if (instructionsBtn) instructionsBtn.addEventListener("click", openInstructionsModal);
   if (dashboardBtn) dashboardBtn.addEventListener("click", openDashboardAccessDialog);
+if (studentDashboardBtn) studentDashboardBtn.addEventListener("click", openStudentDashboardAccessDialog);
 if (teacherDashboardBtn) teacherDashboardBtn.addEventListener("click", openTeacherDashboardAccessDialog);
   if (fullscreenBtn) fullscreenBtn.addEventListener("click", () => requestGoogleSitesFullscreen());
 
@@ -1402,17 +1404,19 @@ function performLogout() {
 function updateHeaderSessionButtons() {
   const loggedIn = hasValidStudent();
   if (logoutBtn) logoutBtn.classList.toggle("hidden", !loggedIn);
+  if (studentDashboardBtn) studentDashboardBtn.classList.remove("hidden");
   if (teacherDashboardBtn) teacherDashboardBtn.classList.remove("hidden");
   if (dashboardBtn) dashboardBtn.classList.remove("hidden");
   updateFullscreenControls();
 }
 
 
-function grantDashboardAccess(role = "admin") {
+function grantDashboardAccess(role = "admin", extra = {}) {
   try {
     sessionStorage.setItem(DASHBOARD_ACCESS_KEY, JSON.stringify({
       ok: true,
       role,
+      ...extra,
       createdAt: Date.now(),
       expiresAt: Date.now() + DASHBOARD_ACCESS_DURATION_MS
     }));
@@ -1430,15 +1434,94 @@ function isTeacherCredentialValid(user, password) {
   return [DASHBOARD_TEACHER_USER, "profesor", "docentes", "teacher"].includes(normalizedUser) && String(password || "").trim() === DASHBOARD_TEACHER_PASSWORD;
 }
 
-function hasDashboardAccess() {
+function normalizeAccessEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isStudentCredentialValid(user, password) {
+  const email = normalizeAccessEmail(user);
+  const pass = normalizeAccessEmail(password);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email === pass ? email : "";
+}
+
+function getDashboardAccessPayload() {
   try {
     const payload = JSON.parse(sessionStorage.getItem(DASHBOARD_ACCESS_KEY) || "null");
-    return Boolean(payload && payload.ok && Number(payload.expiresAt) > Date.now());
+    if (!payload || !payload.ok || Number(payload.expiresAt) <= Date.now()) return null;
+    return payload;
   } catch (error) {
-    return false;
+    return null;
   }
 }
 
+function getDashboardAccessRole() {
+  const payload = getDashboardAccessPayload();
+  return payload && payload.role ? payload.role : "";
+}
+
+function hasDashboardAccess() {
+  return Boolean(getDashboardAccessPayload());
+}
+
+
+
+function openStudentDashboardAccessDialog() {
+  const existing = document.getElementById("studentDashboardAccessDialog");
+  if (existing) existing.remove();
+
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay dashboard-access-dialog";
+  overlay.id = "studentDashboardAccessDialog";
+  overlay.setAttribute("role", "presentation");
+  overlay.innerHTML = `
+    <section class="dialog-card dashboard-access-card" role="dialog" aria-modal="true" aria-labelledby="studentDashboardAccessTitle" aria-describedby="studentDashboardAccessHelp">
+      <button class="dialog-close" type="button" aria-label="Cerrar">×</button>
+      <p class="eyebrow">Acceso estudiante</p>
+      <h2 id="studentDashboardAccessTitle">Mis resultados</h2>
+      <p id="studentDashboardAccessHelp">Ingresa tu correo institucional como usuario y como clave para consultar únicamente tus resultados.</p>
+      <label class="field">
+        <span>Usuario / correo</span>
+        <input id="studentDashboardUser" type="email" autocomplete="username" placeholder="tu.correo@iemanueljbetancur.edu.co" />
+      </label>
+      <label class="field">
+        <span>Clave / correo</span>
+        <input id="studentDashboardPassword" type="password" autocomplete="current-password" placeholder="Repite tu correo" />
+      </label>
+      <div class="form-error" id="studentDashboardAccessError" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <button class="secondary-btn" type="button" data-student-dashboard-cancel>Cancelar</button>
+        <button class="primary-btn" type="button" id="studentDashboardAccessConfirm">Ver mis resultados</button>
+      </div>
+    </section>
+  `;
+
+  document.body.appendChild(overlay);
+  const user = overlay.querySelector("#studentDashboardUser");
+  const password = overlay.querySelector("#studentDashboardPassword");
+  const error = overlay.querySelector("#studentDashboardAccessError");
+  const close = () => overlay.remove();
+  const submit = () => {
+    const email = isStudentCredentialValid(user.value, password.value);
+    if (!email) {
+      error.textContent = "Debes escribir el mismo correo institucional en usuario y clave.";
+      password.value = "";
+      password.focus();
+      return;
+    }
+    grantDashboardAccess("student", { email });
+    window.location.href = "dashboard.html";
+  };
+
+  overlay.querySelector(".dialog-close").addEventListener("click", close);
+  overlay.querySelector("[data-student-dashboard-cancel]").addEventListener("click", close);
+  overlay.addEventListener("click", event => { if (event.target === overlay) close(); });
+  overlay.addEventListener("keydown", event => {
+    if (event.key === "Escape") close();
+    if (event.key === "Enter") submit();
+  });
+  overlay.querySelector("#studentDashboardAccessConfirm").addEventListener("click", submit);
+  setTimeout(() => user.focus(), 50);
+}
 
 function openTeacherDashboardAccessDialog() {
   const existing = document.getElementById("teacherDashboardAccessDialog");
@@ -1498,7 +1581,7 @@ function openTeacherDashboardAccessDialog() {
 }
 
 function openDashboardAccessDialog() {
-  if (hasDashboardAccess()) {
+  if (hasDashboardAccess() && getDashboardAccessRole() === "admin") {
     openAdminPanelDialog();
     return;
   }

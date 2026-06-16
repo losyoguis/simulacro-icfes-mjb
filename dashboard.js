@@ -88,16 +88,26 @@ function isDashboardTeacherRole() {
   return getDashboardAccessRole() === "teacher";
 }
 
+function isDashboardStudentRole() {
+  return getDashboardAccessRole() === "student";
+}
+
+function getDashboardAccessEmail() {
+  const data = getDashboardAccessPayload();
+  return data && data.email ? normalizeAccessEmail(data.email) : "";
+}
+
 function isDashboardAdminRole() {
   const role = getDashboardAccessRole();
   return !role || role === "admin";
 }
 
-function grantDashboardAccess(role = "admin") {
+function grantDashboardAccess(role = "admin", extra = {}) {
   try {
     sessionStorage.setItem(DASHBOARD_ACCESS_KEY, JSON.stringify({
       ok: true,
       role,
+      ...extra,
       createdAt: Date.now(),
       expiresAt: Date.now() + DASHBOARD_ACCESS_DURATION_MS
     }));
@@ -110,12 +120,22 @@ function isDashboardPasswordValid(value) {
   return String(value || "").trim() === DASHBOARD_ACCESS_PASSWORD;
 }
 
+function normalizeAccessEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getRecordEmail(record) {
+  return normalizeAccessEmail(record && record.email);
+}
+
 function getDashboardRoleFromCredentials(user, password) {
   const normalizedUser = String(user || "").trim().toLowerCase();
   const rawPassword = String(password || "").trim();
-  if ((!normalizedUser || normalizedUser === "admin" || normalizedUser === "administrador") && rawPassword === DASHBOARD_ACCESS_PASSWORD) return "admin";
-  if ([DASHBOARD_TEACHER_USER, "profesor", "docentes", "teacher"].includes(normalizedUser) && rawPassword === DASHBOARD_TEACHER_PASSWORD) return "teacher";
-  return "";
+  const normalizedPassword = normalizeAccessEmail(password);
+  if ((!normalizedUser || normalizedUser === "admin" || normalizedUser === "administrador") && rawPassword === DASHBOARD_ACCESS_PASSWORD) return { role: "admin" };
+  if ([DASHBOARD_TEACHER_USER, "profesor", "docentes", "teacher"].includes(normalizedUser) && rawPassword === DASHBOARD_TEACHER_PASSWORD) return { role: "teacher" };
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedUser) && normalizedUser === normalizedPassword) return { role: "student", email: normalizedUser };
+  return null;
 }
 
 function showDashboardAccessGate() {
@@ -129,10 +149,10 @@ function showDashboardAccessGate() {
     <section class="dashboard-utility-card dashboard-access-card" role="dialog" aria-modal="true" aria-labelledby="dashboardAccessTitle" aria-describedby="dashboardAccessHelp">
       <p class="eyebrow">Acceso protegido</p>
       <h2 id="dashboardAccessTitle">Dashboard institucional</h2>
-      <p id="dashboardAccessHelp">Ingresa como administrador o como docente. El usuario docente solo puede observar el dashboard.</p>
+      <p id="dashboardAccessHelp">Ingresa como administrador, docente o estudiante. El estudiante usa su correo como usuario y clave, y solo verá sus propios resultados.</p>
       <label class="field">
         <span>Usuario</span>
-        <input id="dashboardAccessUser" type="text" autocomplete="username" placeholder="admin o docente" />
+        <input id="dashboardAccessUser" type="text" autocomplete="username" placeholder="admin, docente o correo" />
       </label>
       <label class="field">
         <span>Clave</span>
@@ -152,15 +172,15 @@ function showDashboardAccessGate() {
   const status = overlay.querySelector("#dashboardAccessStatus");
   const confirmBtn = overlay.querySelector("#dashboardAccessConfirm");
   const submit = () => {
-    const role = getDashboardRoleFromCredentials(user.value, password.value);
-    if (!role) {
+    const access = getDashboardRoleFromCredentials(user.value, password.value);
+    if (!access) {
       status.textContent = "Usuario o clave incorrectos. Verifica las credenciales institucionales.";
       status.dataset.kind = "error";
       password.value = "";
       password.focus();
       return;
     }
-    grantDashboardAccess(role);
+    grantDashboardAccess(access.role, access.email ? { email: access.email } : {});
     overlay.remove();
     document.body.classList.remove("dashboard-locked");
     initDashboard();
@@ -206,9 +226,12 @@ function initDashboard() {
 
 
 function applyDashboardRoleRestrictions() {
-  const teacher = isDashboardTeacherRole();
-  if (els.deleteBtn) els.deleteBtn.classList.toggle("hidden", teacher);
-  if (els.sheets) els.sheets.classList.toggle("hidden", teacher);
+  const readOnly = isDashboardTeacherRole() || isDashboardStudentRole();
+  const student = isDashboardStudentRole();
+  if (els.deleteBtn) els.deleteBtn.classList.toggle("hidden", readOnly);
+  if (els.sheets) els.sheets.classList.toggle("hidden", readOnly);
+  if (els.group) els.group.disabled = student;
+  if (els.student) els.student.disabled = student;
 }
 
 function setStatus(message, kind = "info") {
@@ -880,10 +903,16 @@ function populateStudentOptions() {
   const data = dashboardState.data || { records: [] };
   const group = els.group.value;
   const section = els.section ? els.section.value : '';
+  const forcedEmail = isDashboardStudentRole() ? getDashboardAccessEmail() : '';
   const selectedStudent = els.student.value;
-  const students = latestStudents(data.records.filter(record => (!group || record.group === group) && (!section || getSectionKey(record) === section)));
-  els.student.innerHTML = `<option value="">Todos los estudiantes</option>` + students.map(student => `<option value="${escapeAttr(student.key)}">${escapeHtml(student.studentName)} · ${escapeHtml(student.group)}</option>`).join("");
-  if (students.some(student => student.key === selectedStudent)) els.student.value = selectedStudent;
+  const students = latestStudents(data.records.filter(record => (!forcedEmail || getRecordEmail(record) === forcedEmail) && (!group || record.group === group) && (!section || getSectionKey(record) === section)));
+  const defaultLabel = forcedEmail ? 'Mis resultados' : 'Todos los estudiantes';
+  els.student.innerHTML = `<option value="">${defaultLabel}</option>` + students.map(student => `<option value="${escapeAttr(student.key)}">${escapeHtml(student.studentName)} · ${escapeHtml(student.group)}</option>`).join("");
+  if (forcedEmail && students.length) {
+    els.student.value = students[0].key;
+  } else if (students.some(student => student.key === selectedStudent)) {
+    els.student.value = selectedStudent;
+  }
 }
 
 function renderDashboard() {
@@ -916,11 +945,13 @@ function renderDashboard() {
 function applyFilters(records, details) {
   const group = els.group.value;
   const section = els.section ? els.section.value : '';
-  const studentKey = els.student.value;
+  const forcedEmail = isDashboardStudentRole() ? getDashboardAccessEmail() : '';
+  const studentKey = forcedEmail ? '' : els.student.value;
   const from = els.from.value ? new Date(`${els.from.value}T00:00:00`) : null;
   const to = els.to.value ? new Date(`${els.to.value}T23:59:59`) : null;
 
   const filteredRecords = records.filter(record => {
+    if (forcedEmail && getRecordEmail(record) !== forcedEmail) return false;
     if (group && record.group !== group) return false;
     if (section && getSectionKey(record) !== section) return false;
     if (studentKey && getStudentKey(record) !== studentKey) return false;
@@ -933,6 +964,7 @@ function applyFilters(records, details) {
   const allowed = new Set(filteredRecords.map(getRecordAttemptKey));
   const filteredDetails = details.filter(item => {
     if (allowed.has(getDetailAttemptKey(item))) return true;
+    if (forcedEmail && getRecordEmail(item) !== forcedEmail) return false;
     if (group && item.group !== group) return false;
     if (section && getSectionKey(item) !== section) return false;
     if (studentKey && getStudentKey(item) !== studentKey) return false;
