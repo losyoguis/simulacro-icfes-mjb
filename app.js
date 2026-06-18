@@ -2060,6 +2060,8 @@ function renderAccess(pendingScope = null) {
                 <option value="11-1" ${currentGroup === "11-1" ? "selected" : ""}>11-1</option>
                 <option value="11-2" ${currentGroup === "11-2" ? "selected" : ""}>11-2</option>
                 <option value="11-3" ${currentGroup === "11-3" ? "selected" : ""}>11-3</option>
+                <option value="Docente" ${currentGroup === "Docente" ? "selected" : ""}>Docente</option>
+                <option value="Invitado" ${currentGroup === "Invitado" ? "selected" : ""}>Invitado</option>
               </select>
             </label>
             <label class="field field-wide">
@@ -2094,7 +2096,7 @@ function renderAccess(pendingScope = null) {
     }
 
     if (!group) {
-      error.textContent = "Por favor, selecciona un grupo válido: 11-1, 11-2 o 11-3.";
+      error.textContent = "Por favor, selecciona una opción válida: 11-1, 11-2, 11-3, Docente o Invitado.";
       return;
     }
 
@@ -2133,9 +2135,16 @@ function normalizeNameInput(value) {
 function normalizeGroupInput(value) {
   const raw = String(value || "").replace(/\s+/g, "").trim();
   const normalized = raw.toLowerCase();
-  const allowed = ["11-1", "11-2", "11-3"];
-  if (allowed.includes(normalized)) return normalized;
-  return "";
+  const labels = {
+    "11-1": "11-1",
+    "11-2": "11-2",
+    "11-3": "11-3",
+    docente: "Docente",
+    profesor: "Docente",
+    invitado: "Invitado",
+    invitada: "Invitado"
+  };
+  return labels[normalized] || "";
 }
 
 function normalizeEmailInput(value) {
