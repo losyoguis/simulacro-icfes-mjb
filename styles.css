@@ -11351,3 +11351,79 @@ html[data-theme="dark"] .question-resource .riad-comic-card .thought {
 html[data-theme="dark"] .question-resource .riad-comic-card .panel-number {
   color: #ffffff !important;
 }
+
+
+/* Informe docente por materias */
+.dashboard-card-subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.teacher-report-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.teacher-area-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow-sm, 0 10px 25px rgba(15, 23, 42, 0.08));
+}
+
+.teacher-area-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.teacher-area-head h4 {
+  margin: 0;
+}
+
+.teacher-area-head p,
+.teacher-recommendation {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.teacher-area-head strong {
+  font-size: 1.5rem;
+  color: var(--primary);
+}
+
+.teacher-group-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.teacher-group-pill {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary), transparent 88%);
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.teacher-topic-list {
+  margin: 10px 0;
+  padding-left: 18px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+html[data-theme="dark"] .teacher-area-card {
+  background: #111827 !important;
+  border-color: rgba(148, 163, 184, .35) !important;
+}
