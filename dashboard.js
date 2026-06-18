@@ -3,6 +3,9 @@ const DASHBOARD_ENDPOINT_DOMAIN = "";
 const DASHBOARD_ENDPOINTS = Array.from(new Set([DASHBOARD_ENDPOINT_DOMAIN, DASHBOARD_ENDPOINT].filter(Boolean)));
 const DASHBOARD_INSTITUTION = "Institución Educativa Manuel J. Betancur";
 const DASHBOARD_SPREADSHEET_ID = "17FbkF9BulfEfAAoDFNkljdsXWjXQOH_cBB3r-Iizjxs";
+const DASHBOARD_RESULTS_SHEET_NAME = "Resultados";
+const DASHBOARD_DETAILS_SHEET_NAME = "Respuestas_Detalladas";
+const DASHBOARD_RESULTS_SHEET_GID = "1281155333";
 const DASHBOARD_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${DASHBOARD_SPREADSHEET_ID}/edit`;
 const DASHBOARD_ALLOWED_GROUPS = ["11-1", "11-2", "11-3"];
 const DASHBOARD_ACCESS_PASSWORD = "MJB-ICFES-2026";
@@ -10,6 +13,9 @@ const DASHBOARD_TEACHER_USER = "docente";
 const DASHBOARD_TEACHER_PASSWORD = "MJB-DOCENTE-2026";
 const DASHBOARD_ACCESS_KEY = "icfes_dashboard_institucional_autorizado_v1";
 const DASHBOARD_ACCESS_DURATION_MS = 4 * 60 * 60 * 1000;
+const DASHBOARD_AUTO_REFRESH_MS = 60 * 1000;
+let dashboardAutoRefreshTimer = null;
+let dashboardLastLoadAt = 0;
 
 const dashboardState = {
   data: null,
@@ -562,18 +568,26 @@ function closeDashboardUtilityModal() {
   if (current && current.parentNode) current.parentNode.removeChild(current);
 }
 
-function loadDashboardData() {
-  setStatus("Inicializando conexión con Google Sheets...", "info");
+function loadDashboardData(options = {}) {
+  if (!options.silent) setStatus("Actualizando datos en tiempo real desde Google Sheets...", "info");
+  dashboardLastLoadAt = Date.now();
   els.refreshBtn.disabled = true;
   els.sheets.href = DASHBOARD_SPREADSHEET_URL;
   els.sheets.classList.remove("hidden");
   applyDashboardRoleRestrictions();
 
-  loadDashboardDataFromAppsScript()
+  loadDashboardDataFromGoogleSheets()
     .catch(error => {
-      console.warn("Apps Script no respondió. Se intentará lectura directa desde Google Sheets.", error);
-      setStatus("Apps Script no respondió. Intentando lectura directa desde Google Sheets...", "warning");
-      return loadDashboardDataFromGoogleSheets();
+      console.warn("Lectura directa de Google Sheets no disponible. Se intentará Apps Script.", error);
+      if (!options.silent) setStatus("Lectura directa no disponible. Intentando Apps Script actualizado...", "warning");
+      return loadDashboardDataFromAppsScript();
+    })
+    .then(data => {
+      if (!data || data.ok === false) throw new Error(data && data.message ? data.message : "No se recibieron datos válidos.");
+      if ((!data.records || !data.records.length) && data.source === "Google Sheets directo") {
+        return loadDashboardDataFromAppsScript().catch(() => data);
+      }
+      return data;
     })
     .then(data => {
       if (!data || data.ok === false) throw new Error(data && data.message ? data.message : "No se recibieron datos válidos.");
@@ -582,7 +596,7 @@ function loadDashboardData() {
       renderDashboard();
       const count = dashboardState.data.records.length;
       const source = data.source ? ` Fuente: ${data.source}.` : "";
-      setStatus(`Datos actualizados: ${count} intento(s). Última actualización: ${formatDateTime(data.updatedAt)}.${source}`, "success");
+      setStatus(`Datos actualizados hasta este momento: ${count} intento(s). Última actualización: ${formatDateTime(data.updatedAt || new Date().toISOString())}.${source}`, "success");
       if (data.spreadsheetUrl) {
         els.sheets.href = data.spreadsheetUrl;
         els.sheets.classList.remove("hidden");
@@ -591,26 +605,35 @@ function loadDashboardData() {
     })
     .catch(error => {
       console.error(error);
-      setStatus(`No fue posible cargar el dashboard. Verifica que el nuevo Code.gs esté desplegado, que el Web App sea accesible y que el Sheets tenga permisos de lectura. Detalle: ${error.message}`, "error");
+      setStatus(`No fue posible cargar el dashboard actualizado. Verifica permisos del Google Sheets y el Web App. Detalle: ${error.message}`, "error");
       renderEmptyState();
     })
     .finally(() => { els.refreshBtn.disabled = false; });
 }
 
 function loadDashboardDataFromAppsScript() {
-  return fetchJsonpFromEndpoints(DASHBOARD_ENDPOINTS, '?accion=dashboard-data', 90000)
+  const query = `?accion=dashboard-data&fresh=1&cache=0&cacheBust=${Date.now()}`;
+  return fetchJsonpFromEndpoints(DASHBOARD_ENDPOINTS, query, 90000)
     .then(data => {
       if (!data || data.ok === false) throw new Error(data && data.message ? data.message : "Respuesta inválida de Apps Script.");
-      data.source = "Apps Script";
+      data.source = "Apps Script actualizado";
+      data.updatedAt = data.updatedAt || new Date().toISOString();
       return data;
     });
 }
 
 function loadDashboardDataFromGoogleSheets() {
-  return Promise.all([
-    fetchGvizRows("Resultados"),
-    fetchGvizRows("Respuestas_Detalladas")
-  ]).then(([resultTable, detailTable]) => {
+  const resultPromise = fetchGvizRows(DASHBOARD_RESULTS_SHEET_NAME)
+    .catch(error => {
+      console.warn(`No se pudo leer la hoja ${DASHBOARD_RESULTS_SHEET_NAME} por nombre. Intentando gid ${DASHBOARD_RESULTS_SHEET_GID}.`, error);
+      return fetchGvizRowsByGid(DASHBOARD_RESULTS_SHEET_GID);
+    });
+  const detailPromise = fetchGvizRows(DASHBOARD_DETAILS_SHEET_NAME).catch(error => {
+    console.warn(`No se pudo leer la hoja ${DASHBOARD_DETAILS_SHEET_NAME}. Se continuará sin detalle de respuestas.`, error);
+    return { headers: [], rows: [] };
+  });
+
+  return Promise.all([resultPromise, detailPromise]).then(([resultTable, detailTable]) => {
     const records = recordsFromSheetRows(resultTable);
     const details = detailsFromSheetRows(detailTable);
     return {
@@ -623,8 +646,8 @@ function loadDashboardDataFromGoogleSheets() {
       details,
       summary: {},
       notes: [
-        "Datos leídos directamente desde Google Sheets como respaldo cuando Apps Script no respondió.",
-        "Para registrar nuevos resultados automáticamente, el Apps Script debe estar desplegado con el Code.gs actualizado."
+        "Datos leídos directamente desde Google Sheets con cache desactivada para mostrar registros recientes y futuros.",
+        "El botón Actualizar datos vuelve a consultar la hoja en tiempo real."
       ]
     };
   });
@@ -675,13 +698,23 @@ function fetchJsonp(url, timeoutMs = 25000) {
 }
 
 function fetchGvizRows(sheetName) {
+  return fetchGvizTable({ sheetName });
+}
+
+function fetchGvizRowsByGid(gid) {
+  return fetchGvizTable({ gid });
+}
+
+function fetchGvizTable({ sheetName = "", gid = "" } = {}) {
   return new Promise((resolve, reject) => {
     const callbackName = `gvizCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const url = `https://docs.google.com/spreadsheets/d/${DASHBOARD_SPREADSHEET_ID}/gviz/tq?sheet=${encodeURIComponent(sheetName)}&tqx=out:json;responseHandler:${callbackName}&t=${Date.now()}`;
+    const selector = gid ? `gid=${encodeURIComponent(gid)}` : `sheet=${encodeURIComponent(sheetName)}`;
+    const tqx = `out:json;responseHandler:${callbackName}`;
+    const url = `https://docs.google.com/spreadsheets/d/${DASHBOARD_SPREADSHEET_ID}/gviz/tq?${selector}&headers=1&tq=${encodeURIComponent('select *')}&tqx=${encodeURIComponent(tqx)}&cacheBust=${Date.now()}`;
     const script = document.createElement("script");
     const timer = setTimeout(() => {
       cleanup();
-      reject(new Error(`Tiempo de espera agotado leyendo la hoja ${sheetName}.`));
+      reject(new Error(`Tiempo de espera agotado leyendo ${sheetName || gid}.`));
     }, 30000);
 
     function cleanup() {
@@ -704,7 +737,7 @@ function fetchGvizRows(sheetName) {
 
     script.onerror = () => {
       cleanup();
-      reject(new Error(`No fue posible leer la hoja ${sheetName} directamente.`));
+      reject(new Error(`No fue posible leer ${sheetName || gid} directamente.`));
     };
 
     script.src = url;
