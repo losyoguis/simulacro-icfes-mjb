@@ -24,10 +24,15 @@
       </div>
       <div class="header-actions">
         <button id="themeBtn" class="theme-toggle-btn" type="button" aria-label="Cambiar tema día o noche"><span class="theme-toggle-track"><span class="theme-toggle-sun">☀️</span><span class="theme-toggle-moon">🌙</span><span class="theme-toggle-knob" aria-hidden="true"></span></span><span class="theme-toggle-label">Noche</span></button>
-        <button id="studentDashboardBtn" class="ghost-btn hidden" type="button">Estudiantes</button>
-        <button id="teacherDashboardBtn" class="ghost-btn hidden" type="button">Docentes</button>
-        <button id="dashboardBtn" class="ghost-btn hidden" type="button">Administrador</button>
-        <!-- Botones informativos desactivados para el modo simulacro seguro. -->
+        <div id="consultDataMenu" class="consult-data-menu">
+          <button id="consultDataBtn" class="ghost-btn consult-data-btn" type="button" aria-expanded="false" aria-controls="consultDataDropdown">Consultar datos ▾</button>
+          <div id="consultDataDropdown" class="consult-data-dropdown hidden" role="menu" aria-label="Opciones de consulta de datos">
+            <button type="button" role="menuitem" data-consult-role="student">Estudiantes</button>
+            <button type="button" role="menuitem" data-consult-role="teacher">Docentes</button>
+            <button type="button" role="menuitem" data-consult-role="admin">Administrador</button>
+          </div>
+        </div>
+        <!-- Accesos de consulta organizados en el botón Consultar datos. -->
         <button id="logoutBtn" class="ghost-btn danger-ghost-btn hidden" type="button">Cerrar sesión</button>
         <button id="homeBtn" class="ghost-btn hidden" type="button">Inicio</button>
       </div>

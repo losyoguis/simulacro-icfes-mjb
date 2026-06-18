@@ -11502,3 +11502,65 @@ html[data-theme="dark"] .student-personal-guidance {
   background: rgba(30, 64, 175, .16) !important;
   border-color: rgba(148, 163, 184, .35) !important;
 }
+
+
+/* Menú superior Consultar datos */
+.consult-data-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.consult-data-btn {
+  white-space: nowrap;
+}
+
+.consult-data-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  min-width: 220px;
+  z-index: 80;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, .22);
+}
+
+.consult-data-dropdown button {
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+
+.consult-data-dropdown button:hover,
+.consult-data-dropdown button:focus-visible {
+  background: color-mix(in srgb, var(--primary), transparent 84%);
+  outline: none;
+}
+
+html[data-theme="dark"] .consult-data-dropdown {
+  background: #0f172a !important;
+  border-color: rgba(148, 163, 184, .35) !important;
+}
+
+@media (max-width: 720px) {
+  .consult-data-menu,
+  .consult-data-btn {
+    width: 100%;
+  }
+  .consult-data-dropdown {
+    left: 0;
+    right: auto;
+    width: min(100%, 280px);
+  }
+}

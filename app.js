@@ -69,6 +69,9 @@ const instructionsBtn = document.getElementById("instructionsBtn");
 const dashboardBtn = document.getElementById("dashboardBtn");
 const studentDashboardBtn = document.getElementById("studentDashboardBtn");
 const teacherDashboardBtn = document.getElementById("teacherDashboardBtn");
+const consultDataMenu = document.getElementById("consultDataMenu");
+const consultDataBtn = document.getElementById("consultDataBtn");
+const consultDataDropdown = document.getElementById("consultDataDropdown");
 
 let timerInterval = null;
 let state = {
@@ -1297,8 +1300,25 @@ function bindGlobalEvents() {
   if (tipsBtn) tipsBtn.addEventListener("click", openTipsModal);
   if (instructionsBtn) instructionsBtn.addEventListener("click", openInstructionsModal);
   if (dashboardBtn) dashboardBtn.addEventListener("click", openDashboardAccessDialog);
-if (studentDashboardBtn) studentDashboardBtn.addEventListener("click", openStudentDashboardAccessDialog);
-if (teacherDashboardBtn) teacherDashboardBtn.addEventListener("click", openTeacherDashboardAccessDialog);
+  if (studentDashboardBtn) studentDashboardBtn.addEventListener("click", openStudentDashboardAccessDialog);
+  if (teacherDashboardBtn) teacherDashboardBtn.addEventListener("click", openTeacherDashboardAccessDialog);
+  if (consultDataBtn) consultDataBtn.addEventListener("click", event => {
+    event.stopPropagation();
+    toggleConsultDataMenu();
+  });
+  if (consultDataDropdown) consultDataDropdown.addEventListener("click", event => {
+    const btn = event.target.closest("[data-consult-role]");
+    if (!btn) return;
+    event.preventDefault();
+    closeConsultDataMenu();
+    const role = btn.getAttribute("data-consult-role");
+    if (role === "student") openStudentDashboardAccessDialog();
+    else if (role === "teacher") openTeacherDashboardAccessDialog();
+    else openDashboardAccessDialog();
+  });
+  document.addEventListener("click", event => {
+    if (consultDataMenu && !consultDataMenu.contains(event.target)) closeConsultDataMenu();
+  });
   if (fullscreenBtn) fullscreenBtn.addEventListener("click", () => requestGoogleSitesFullscreen());
 
   document.addEventListener("click", event => {
@@ -1335,6 +1355,18 @@ if (teacherDashboardBtn) teacherDashboardBtn.addEventListener("click", openTeach
   document.addEventListener("gesturestart", handleSecureExamGesture, { capture: true, passive: true });
   document.addEventListener("gesturechange", handleSecureExamGesture, { capture: true, passive: true });
   document.addEventListener("contextmenu", handleSecureExamContextMenu, true);
+}
+
+function toggleConsultDataMenu(force) {
+  if (!consultDataBtn || !consultDataDropdown) return;
+  const isOpen = !consultDataDropdown.classList.contains("hidden");
+  const next = typeof force === "boolean" ? force : !isOpen;
+  consultDataDropdown.classList.toggle("hidden", !next);
+  consultDataBtn.setAttribute("aria-expanded", next ? "true" : "false");
+}
+
+function closeConsultDataMenu() {
+  toggleConsultDataMenu(false);
 }
 
 function handleHomeNavigation() {
@@ -1404,9 +1436,11 @@ function performLogout() {
 function updateHeaderSessionButtons() {
   const loggedIn = hasValidStudent();
   if (logoutBtn) logoutBtn.classList.toggle("hidden", !loggedIn);
-  if (studentDashboardBtn) studentDashboardBtn.classList.remove("hidden");
-  if (teacherDashboardBtn) teacherDashboardBtn.classList.remove("hidden");
-  if (dashboardBtn) dashboardBtn.classList.remove("hidden");
+  if (studentDashboardBtn) studentDashboardBtn.classList.add("hidden");
+  if (teacherDashboardBtn) teacherDashboardBtn.classList.add("hidden");
+  if (dashboardBtn) dashboardBtn.classList.add("hidden");
+  closeConsultDataMenu();
+  if (consultDataMenu) consultDataMenu.classList.remove("hidden");
   updateFullscreenControls();
 }
 
@@ -1752,7 +1786,7 @@ function closeActionDialog() {
   if (current) current.remove();
 }
 
-function openTipsModal() {
+function openTipsModal(onClose, options = {}) {
   closeActionDialog();
 
   const overlay = document.createElement("div");
@@ -1902,7 +1936,7 @@ function openTipsModal() {
         </article>
       </div>
       <div class="dialog-actions tips-modal-actions">
-        <button class="primary-btn" type="button" data-dialog-cancel>Cerrar tips</button>
+        <button class="primary-btn" type="button" data-dialog-cancel>${escapeHtml(options.confirmText || "Cerrar tips")}</button>
       </div>
     </section>
   `;
@@ -1910,6 +1944,7 @@ function openTipsModal() {
   overlay.addEventListener("click", event => {
     if (event.target === overlay || event.target.closest("[data-dialog-cancel]") || event.target.closest(".dialog-close")) {
       closeActionDialog();
+      if (typeof onClose === "function") onClose();
     }
   });
 
@@ -1949,6 +1984,7 @@ function openInstructionsModal() {
   overlay.addEventListener("click", event => {
     if (event.target === overlay || event.target.closest("[data-dialog-cancel]") || event.target.closest(".dialog-close")) {
       closeActionDialog();
+      if (typeof onClose === "function") onClose();
     }
   });
 
@@ -1997,6 +2033,7 @@ function renderAccess(pendingScope = null) {
   homeBtn.classList.add("hidden");
   if (logoutBtn) logoutBtn.classList.add("hidden");
   if (dashboardBtn) dashboardBtn.classList.add("hidden");
+  closeConsultDataMenu();
   const current = state.student || loadSavedStudent() || { fullName: "", group: "", email: "" };
   const currentFullName = normalizeNameInput(current.fullName || `${current.firstName || ""} ${current.lastName || ""}`);
   const currentGroup = normalizeGroupInput(current.group || current.gradeGroup || current.course || "");
@@ -2074,13 +2111,15 @@ function renderAccess(pendingScope = null) {
     state.student = { fullName, group, email };
     storageSet(STUDENT_KEY, JSON.stringify(state.student));
     updateHeaderSessionButtons();
-    openExamInstructionsDialog(() => {
-      requestGoogleSitesFullscreen({ showFallback: false });
-      openSecureExamInfoDialog(() => {
-        if (pendingScope) startScope(pendingScope);
-        else renderHome();
+    openTipsModal(() => {
+      openExamInstructionsDialog(() => {
+        requestGoogleSitesFullscreen({ showFallback: false });
+        openSecureExamInfoDialog(() => {
+          if (pendingScope) startScope(pendingScope);
+          else renderHome();
+        });
       });
-    });
+    }, { confirmText: "Continuar" });
   });
 
   const firstInput = document.getElementById("studentFullName");
