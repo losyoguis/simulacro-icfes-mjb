@@ -32,6 +32,7 @@ const els = {
   deleteBtn: document.getElementById("deleteSheetDataBtn"),
   group: document.getElementById("filterGroup"),
   section: document.getElementById("filterSection"),
+  areaFilter: document.getElementById("filterArea"),
   student: document.getElementById("filterStudent"),
   from: document.getElementById("filterFrom"),
   to: document.getElementById("filterTo"),
@@ -220,11 +221,13 @@ function initDashboard() {
   applyDashboardRoleRestrictions();
   if (els.deleteBtn) els.deleteBtn.addEventListener("click", deleteSheetData);
   if (els.teacherReportPdfBtn) els.teacherReportPdfBtn.addEventListener("click", exportTeacherReportPdf);
+  if (els.teacherReportContent) els.teacherReportContent.addEventListener("click", handleTeacherSubjectReportClick);
   if (els.studentTable) els.studentTable.addEventListener("click", handleStudentTablePdfClick);
-  [els.group, els.section, els.student, els.from, els.to].filter(Boolean).forEach(input => input.addEventListener("change", renderDashboard));
+  [els.group, els.section, els.areaFilter, els.student, els.from, els.to].filter(Boolean).forEach(input => input.addEventListener("change", renderDashboard));
   els.clear.addEventListener("click", () => {
     els.group.value = "";
     if (els.section) els.section.value = "";
+    if (els.areaFilter) els.areaFilter.value = "";
     els.student.value = "";
     els.from.value = "";
     els.to.value = "";
@@ -312,7 +315,8 @@ function createInstitutionalDashboardPdf(records, details, summary) {
 
   const studentText = els.student && els.student.value ? (els.student.options[els.student.selectedIndex] ? els.student.options[els.student.selectedIndex].text : 'Filtrado') : 'Todos';
   const sectionText = els.section && els.section.value ? `Seccion ${els.section.value}` : 'Todas';
-  const filterText = `Filtros: Grupo ${els.group && els.group.value ? els.group.value : 'Todos'} | Seccion ${sectionText} | Estudiante ${studentText} | Desde ${els.from && els.from.value ? els.from.value : 'Inicio'} | Hasta ${els.to && els.to.value ? els.to.value : 'Hoy'}`;
+  const areaText = els.areaFilter && els.areaFilter.value ? els.areaFilter.value : 'Todas';
+  const filterText = `Filtros: Grupo ${els.group && els.group.value ? els.group.value : 'Todos'} | Seccion ${sectionText} | Asignatura ${areaText} | Estudiante ${studentText} | Desde ${els.from && els.from.value ? els.from.value : 'Inicio'} | Hasta ${els.to && els.to.value ? els.to.value : 'Hoy'}`;
   pdfText(ops, filterText, marginX, 750, 8.3, false, colors.muted, 112);
 
   const cards = [
@@ -934,16 +938,36 @@ function populateFilterOptions() {
   } else {
     els.group.value = "";
   }
+  populateAreaOptions();
   populateStudentOptions();
+}
+
+
+function populateAreaOptions() {
+  if (!els.areaFilter) return;
+  const data = dashboardState.data || { records: [], details: [] };
+  const selectedArea = els.areaFilter.value;
+  const areas = unique([
+    ...(data.records || []).flatMap(record => (record.byArea || []).map(area => area.area)),
+    ...(data.details || []).map(item => item.area)
+  ]).sort((a, b) => a.localeCompare(b));
+  els.areaFilter.innerHTML = `<option value="">Todas las asignaturas</option>` + areas.map(area => `<option value="${escapeAttr(area)}">${escapeHtml(area)}</option>`).join("");
+  if (areas.some(area => normalizeHeader(area) === normalizeHeader(selectedArea))) {
+    const match = areas.find(area => normalizeHeader(area) === normalizeHeader(selectedArea));
+    els.areaFilter.value = match;
+  } else {
+    els.areaFilter.value = "";
+  }
 }
 
 function populateStudentOptions() {
   const data = dashboardState.data || { records: [] };
   const group = els.group.value;
   const section = els.section ? els.section.value : '';
+  const selectedArea = els.areaFilter ? els.areaFilter.value : '';
   const forcedEmail = isDashboardStudentRole() ? getDashboardAccessEmail() : '';
   const selectedStudent = els.student.value;
-  const students = latestStudents(data.records.filter(record => (!forcedEmail || getRecordEmail(record) === forcedEmail) && (!group || record.group === group) && (!section || getSectionKey(record) === section)));
+  const students = latestStudents(data.records.filter(record => (!forcedEmail || getRecordEmail(record) === forcedEmail) && (!group || record.group === group) && (!section || getSectionKey(record) === section) && (!selectedArea || Boolean(getRecordAreaStat(record, selectedArea)))));
   const defaultLabel = forcedEmail ? 'Mis resultados' : 'Todos los estudiantes';
   els.student.innerHTML = `<option value="">${defaultLabel}</option>` + students.map(student => `<option value="${escapeAttr(student.key)}">${escapeHtml(student.studentName)} · ${escapeHtml(student.group)}</option>`).join("");
   if (forcedEmail && students.length) {
@@ -984,33 +1008,71 @@ function renderDashboard() {
 function applyFilters(records, details) {
   const group = els.group.value;
   const section = els.section ? els.section.value : '';
+  const selectedArea = els.areaFilter ? els.areaFilter.value : '';
   const forcedEmail = isDashboardStudentRole() ? getDashboardAccessEmail() : '';
   const studentKey = forcedEmail ? '' : els.student.value;
   const from = els.from.value ? new Date(`${els.from.value}T00:00:00`) : null;
   const to = els.to.value ? new Date(`${els.to.value}T23:59:59`) : null;
 
-  const filteredRecords = records.filter(record => {
+  const baseRecords = records.filter(record => {
     if (forcedEmail && getRecordEmail(record) !== forcedEmail) return false;
     if (group && record.group !== group) return false;
     if (section && getSectionKey(record) !== section) return false;
     if (studentKey && getStudentKey(record) !== studentKey) return false;
+    if (selectedArea && !getRecordAreaStat(record, selectedArea)) return false;
     const date = getRecordDate(record);
     if (from && date && date < from) return false;
     if (to && date && date > to) return false;
     return true;
   });
 
-  const allowed = new Set(filteredRecords.map(getRecordAttemptKey));
+  const filteredRecords = selectedArea
+    ? baseRecords.map(record => projectRecordToArea(record, selectedArea)).filter(Boolean)
+    : baseRecords;
+
+  const allowed = new Set(baseRecords.map(getRecordAttemptKey));
   const filteredDetails = details.filter(item => {
-    if (allowed.has(getDetailAttemptKey(item))) return true;
+    if (allowed.has(getDetailAttemptKey(item))) {
+      return !selectedArea || areaNameMatches(item.area, selectedArea);
+    }
     if (forcedEmail && getRecordEmail(item) !== forcedEmail) return false;
     if (group && item.group !== group) return false;
     if (section && getSectionKey(item) !== section) return false;
     if (studentKey && getStudentKey(item) !== studentKey) return false;
+    if (selectedArea && !areaNameMatches(item.area, selectedArea)) return false;
     return !from && !to;
   });
 
   return { records: filteredRecords, details: filteredDetails };
+}
+
+function areaNameMatches(value, areaName) {
+  return normalizeHeader(value) === normalizeHeader(areaName);
+}
+
+function getRecordAreaStat(record, areaName) {
+  return (record.byArea || []).find(area => areaNameMatches(area.area, areaName)) || null;
+}
+
+function projectRecordToArea(record, areaName) {
+  const area = getRecordAreaStat(record, areaName);
+  if (!area) return null;
+  const score = toNumber(area.percent);
+  return {
+    ...record,
+    score,
+    totalQuestions: toNumber(area.total),
+    answered: toNumber(area.answered),
+    scored: toNumber(area.total),
+    correct: toNumber(area.correct),
+    incorrect: toNumber(area.incorrect),
+    omitted: toNumber(area.omitted),
+    level: levelForScore(score),
+    recommendation: teacherAreaRecommendation(area.area || areaName, score, [], []),
+    byArea: [{ ...area, percent: score }],
+    sessionTitle: `${record.sessionTitle || ''} ${area.area || areaName}`.trim(),
+    areaFilterLabel: area.area || areaName
+  };
 }
 
 function renderKpis(summary) {
@@ -1197,6 +1259,7 @@ function renderTeacherReport(records, details) {
         <div class="teacher-group-list">${groupHtml}</div>
         <ul class="teacher-topic-list">${topicsHtml}</ul>
         <p class="teacher-recommendation">${escapeHtml(area.recommendation)}</p>
+        <button class="secondary-btn teacher-subject-pdf-btn" type="button" data-teacher-subject-pdf="${escapeAttr(area.area)}">Descargar PDF de esta asignatura</button>
       </article>
     `;
   }).join('');
@@ -1261,7 +1324,8 @@ function createTeacherReportPdf(records, details) {
   pdfText(cover, DASHBOARD_INSTITUTION, marginX, 784, 10.5, true, colors.text);
   pdfText(cover, `Generado: ${formatDateTime(new Date().toISOString())}`, marginX, 767, 8.5, false, colors.muted);
   const sectionText = els.section && els.section.value ? `Seccion ${els.section.value}` : 'Todas las secciones';
-  pdfText(cover, `Filtros: Grupo ${els.group && els.group.value ? els.group.value : 'Todos'} | ${sectionText}`, marginX, 750, 8.5, false, colors.muted, 110);
+  const areaFilterText = els.areaFilter && els.areaFilter.value ? ` | Asignatura ${els.areaFilter.value}` : '';
+  pdfText(cover, `Filtros: Grupo ${els.group && els.group.value ? els.group.value : 'Todos'} | ${sectionText}${areaFilterText}`, marginX, 750, 8.5, false, colors.muted, 110);
 
   const cards = [
     ['Intentos', String(summary.totalAttempts), colors.primary],
@@ -1326,6 +1390,165 @@ function createTeacherReportPdf(records, details) {
     pdfText(ops, `Pagina ${index + 2} de ${totalPages}`, marginX, 30, 8, false, colors.muted);
     pages.push(ops.join('\n'));
   });
+
+  return buildPdfFromStreams(pages, pageWidth, pageHeight);
+}
+
+
+function handleTeacherSubjectReportClick(event) {
+  const btn = event.target.closest('[data-teacher-subject-pdf]');
+  if (!btn) return;
+  exportTeacherSubjectReportPdf(btn.getAttribute('data-teacher-subject-pdf') || '');
+}
+
+function exportTeacherSubjectReportPdf(areaName) {
+  const records = (dashboardState.filteredRecords && dashboardState.filteredRecords.length)
+    ? dashboardState.filteredRecords
+    : ((dashboardState.data && dashboardState.data.records) ? dashboardState.data.records : []);
+  const details = (dashboardState.filteredDetails && dashboardState.filteredDetails.length)
+    ? dashboardState.filteredDetails
+    : ((dashboardState.data && dashboardState.data.details) ? dashboardState.data.details : []);
+  const area = String(areaName || '').trim();
+  if (!area || !records.length) {
+    setStatus('No hay datos visibles para generar el informe por asignatura.', 'warning');
+    return;
+  }
+  try {
+    const pdf = createTeacherSubjectReportPdf(area, records, details);
+    const filename = `informe-docente-${slugifyPdf(area)}-${compactDate(new Date())}.pdf`;
+    downloadBlob(filename, new Blob([pdf], { type: 'application/pdf' }), { keepOpen: true });
+    setStatus(`Informe docente de ${area} generado correctamente.`, 'success');
+  } catch (error) {
+    console.error(error);
+    setStatus(`No fue posible generar el informe de ${area}. Detalle: ${error.message || error}`, 'error');
+  }
+}
+
+function buildSubjectQuestionStats(details, areaName) {
+  const areaKey = normalizeHeader(areaName);
+  const filtered = (details || []).filter(item => normalizeHeader(item.area) === areaKey);
+  const grouped = groupBy(filtered, item => String(item.number || 'Sin numero'));
+  return Object.entries(grouped).map(([number, items]) => {
+    const total = items.length;
+    const correct = items.filter(item => /correcta/i.test(item.result || '')).length;
+    const omitted = items.filter(item => /omitida|sin responder/i.test(item.result || '') || /sin responder/i.test(item.studentAnswer || '')).length;
+    const incorrect = Math.max(total - correct - omitted, 0);
+    const difficulty = incorrect + omitted;
+    const percentError = total ? round((difficulty / total) * 100, 1) : 0;
+    const sample = items[0] || {};
+    const groups = unique(items.map(item => item.group).filter(Boolean));
+    return {
+      number,
+      area: sample.area || areaName,
+      competence: sample.competence || 'Competencia no registrada',
+      component: sample.component || sample.competence || 'Tema no registrado',
+      difficultyLabel: sample.difficulty || 'Dificultad no registrada',
+      total,
+      correct,
+      incorrect,
+      omitted,
+      difficulty,
+      percentError,
+      groups
+    };
+  }).filter(item => item.total > 0).sort((a, b) => b.percentError - a.percentError || b.difficulty - a.difficulty || Number(a.number) - Number(b.number));
+}
+
+function createTeacherSubjectReportPdf(areaName, records, details) {
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const marginX = 42;
+  const rightX = pageWidth - marginX;
+  const colors = {
+    primary: [0.13, 0.31, 0.73],
+    accent: [0.02, 0.65, 0.47],
+    danger: [0.85, 0.31, 0.31],
+    warning: [0.96, 0.62, 0.04],
+    text: [0.06, 0.13, 0.20],
+    muted: [0.38, 0.45, 0.55],
+    line: [0.86, 0.90, 0.95],
+    panel: [0.97, 0.98, 0.99],
+    softBlue: [0.95, 0.98, 1],
+    white: [1, 1, 1]
+  };
+  const report = buildTeacherReportData(records, details);
+  const area = report.find(item => normalizeHeader(item.area) === normalizeHeader(areaName));
+  if (!area) throw new Error('No se encontró la asignatura en los datos filtrados.');
+  const questions = buildSubjectQuestionStats(details, area.area);
+  const questionPages = Math.max(1, Math.ceil(questions.length / 8));
+  const totalPages = 1 + questionPages;
+  const pages = [];
+
+  const cover = [];
+  pdfRect(cover, 0, 0, pageWidth, pageHeight, colors.white);
+  pdfText(cover, `INFORME DOCENTE DE ${area.area.toUpperCase()}`, marginX, 804, 14, true, colors.primary);
+  pdfText(cover, DASHBOARD_INSTITUTION, marginX, 784, 10.5, true, colors.text);
+  pdfText(cover, `Generado: ${formatDateTime(new Date().toISOString())}`, marginX, 767, 8.5, false, colors.muted);
+  pdfText(cover, `${area.priority} | Promedio: ${area.percent}% | ${area.correct}/${area.total} correctas`, marginX, 744, 9, true, area.percent < 60 ? colors.danger : colors.accent, 110);
+
+  let y = 704;
+  pdfText(cover, '1. LECTURA GENERAL DE LA ASIGNATURA', marginX, y, 11, true, colors.text);
+  y -= 26;
+  pdfDashboardBar(cover, area.area, area.percent, `${area.correct}/${area.total} correctas`, marginX, y, 360, area.percent < 60 ? colors.danger : colors.accent, colors);
+  y -= 52;
+
+  pdfText(cover, '2. DESEMPENO POR GRUPO', marginX, y, 11, true, colors.text);
+  y -= 24;
+  area.groupRows.forEach(row => {
+    const detail = row.total ? `${row.correct}/${row.total} correctas` : 'Sin datos';
+    pdfDashboardBar(cover, row.group, row.percent, detail, marginX, y, 360, row.percent < 60 ? colors.danger : colors.accent, colors);
+    y -= 32;
+  });
+
+  y -= 12;
+  pdfText(cover, '3. TEMAS PRINCIPALES PARA PROFUNDIZAR', marginX, y, 11, true, colors.text);
+  y -= 24;
+  if (!area.topics.length) {
+    pdfText(cover, 'No hay detalle de temas críticos para esta asignatura.', marginX, y, 8.8, false, colors.muted, 110);
+    y -= 22;
+  } else {
+    area.topics.slice(0, 5).forEach((topic, index) => {
+      if (y < 150) return;
+      pdfRoundRect(cover, marginX, y - 34, rightX - marginX, 40, 6, colors.panel, colors.line);
+      pdfText(cover, `${index + 1}. ${topic.topic}`, marginX + 12, y - 8, 8.5, true, colors.text, 85);
+      const questionText = topic.questions.length ? `Preguntas: ${topic.questions.map(q => `P${q}`).join(', ')}` : 'Preguntas no identificadas';
+      pdfText(cover, `${topic.percentError}% dificultad | ${topic.difficulty}/${topic.total} dificultades | ${questionText}`, marginX + 12, y - 25, 7.8, false, colors.muted, 105);
+      y -= 48;
+    });
+  }
+
+  pdfRoundRect(cover, marginX, 54, rightX - marginX, 58, 8, colors.softBlue, colors.line);
+  pdfText(cover, 'ORIENTACION PARA CLASE', marginX + 14, 92, 8.6, true, colors.primary);
+  pdfText(cover, area.recommendation, marginX + 14, 75, 7.5, false, colors.text, 112);
+  pdfText(cover, `Pagina 1 de ${totalPages}`, marginX, 30, 8, false, colors.muted);
+  pages.push(cover.join('\n'));
+
+  for (let pageIndex = 0; pageIndex < questionPages; pageIndex += 1) {
+    const ops = [];
+    const pageNumber = pageIndex + 2;
+    const start = pageIndex * 8;
+    const chunk = questions.slice(start, start + 8);
+    pdfRect(ops, 0, 0, pageWidth, pageHeight, colors.white);
+    pdfText(ops, `PREGUNTAS A MEJORAR - ${area.area.toUpperCase()}`, marginX, 804, 13, true, colors.primary);
+    pdfText(ops, `Listado ${questions.length ? `${start + 1}-${Math.min(start + chunk.length, questions.length)} de ${questions.length}` : 'sin preguntas críticas'}`, marginX, 782, 8.5, false, colors.muted, 110);
+    let yy = 744;
+    if (!chunk.length) {
+      pdfText(ops, 'No hay detalle de preguntas para esta asignatura. Verifica que la hoja Respuestas_Detalladas esté actualizada.', marginX, yy, 8.8, false, colors.muted, 110);
+    } else {
+      chunk.forEach(question => {
+        pdfRoundRect(ops, marginX, yy - 58, rightX - marginX, 62, 6, colors.panel, colors.line);
+        const title = `P${question.number} | ${question.percentError}% dificultad | ${question.difficulty}/${question.total} dificultades`;
+        pdfText(ops, title, marginX + 12, yy - 10, 8.8, true, question.percentError >= 60 ? colors.danger : colors.warning, 90);
+        pdfText(ops, `Tema/componente: ${question.component}`, marginX + 12, yy - 27, 7.8, false, colors.text, 100);
+        pdfText(ops, `Competencia: ${question.competence}`, marginX + 12, yy - 42, 7.5, false, colors.muted, 100);
+        const action = question.percentError >= 60 ? 'Accion: explicar nuevamente, modelar resolucion y practicar una pregunta similar.' : 'Accion: socializar distractores y reforzar estrategia de lectura.';
+        pdfText(ops, action, marginX + 12, yy - 56, 7.3, false, colors.muted, 104);
+        yy -= 76;
+      });
+    }
+    pdfText(ops, `Pagina ${pageNumber} de ${totalPages}`, marginX, 30, 8, false, colors.muted);
+    pages.push(ops.join('\n'));
+  }
 
   return buildPdfFromStreams(pages, pageWidth, pageHeight);
 }

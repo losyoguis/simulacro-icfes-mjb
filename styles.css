@@ -11427,3 +11427,8 @@ html[data-theme="dark"] .teacher-area-card {
   background: #111827 !important;
   border-color: rgba(148, 163, 184, .35) !important;
 }
+
+.teacher-subject-pdf-btn {
+  margin-top: 12px;
+  width: 100%;
+}
