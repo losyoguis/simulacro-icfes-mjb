@@ -10402,12 +10402,18 @@ html[data-theme="dark"] .mode-preview-card span:not(.mode-preview-icon) {
 }
 
 
-/* Versión simulacro seguro: botones informativos superiores desactivados.
-   El dashboard institucional queda activo, pero protegido con clave. */
-#tipsBtn,
+/* Versión simulacro seguro: solo se oculta Inteligencia Híbrida.
+   La Guía rápida del simulador queda visible antes de iniciar sesión. */
 #instructionsBtn {
   display: none !important;
   pointer-events: none !important;
+}
+
+#tipsBtn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 body.dashboard-locked #dashboardApp,
