@@ -2065,7 +2065,7 @@ function renderAccess(pendingScope = null) {
               </select>
             </label>
             <label class="field field-wide">
-              <span>Correo electrónico del estudiante</span>
+              <span>Correo electrónico</span>
               <input id="studentEmail" type="email" autocomplete="email" required maxlength="140" placeholder="Ejemplo: estudiante@iemanueljbetancur.edu.co" value="${escapeAttr(currentEmail)}" />
             </label>
             <label class="field field-wide">
