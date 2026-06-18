@@ -1801,16 +1801,14 @@ function openTipsModal(onClose, options = {}) {
         <article class="tip-card">
           <h3>1. Estructura general del material</h3>
           <h4>Sección 1: Primera sesión</h4>
-          <p>En la portada se identifican las áreas:</p>
-          <ul>
+                    <ul>
             <li>Matemáticas</li>
             <li>Lectura Crítica</li>
             <li>Sociales y Ciudadanas</li>
             <li>Ciencias Naturales</li>
           </ul>
           <p><strong>Duración:</strong> 4 horas y 30 minutos.</p>
-          <p>La distribución visible es aproximadamente:</p>
-          <div class="tips-table-scroll">
+                    <div class="tips-table-scroll">
             <table class="tips-table">
               <thead><tr><th>Bloque</th><th>Preguntas</th><th>Área</th></tr></thead>
               <tbody>
@@ -1823,16 +1821,14 @@ function openTipsModal(onClose, options = {}) {
           </div>
 
           <h4>Sección 2: Segunda sesión</h4>
-          <p>En la portada se identifican las áreas:</p>
-          <ul>
+                    <ul>
             <li>Sociales y Ciudadanas</li>
             <li>Matemáticas</li>
             <li>Ciencias Naturales</li>
             <li>Inglés</li>
           </ul>
           <p>También aparece una duración de <strong>4 horas y 30 minutos</strong>. En esta versión del simulador se trabajan las preguntas académicas visibles: <strong>1 a 134</strong>.</p>
-          <p>En el archivo visible se observa esta distribución:</p>
-          <div class="tips-table-scroll">
+                    <div class="tips-table-scroll">
             <table class="tips-table">
               <thead><tr><th>Bloque</th><th>Preguntas</th><th>Área</th></tr></thead>
               <tbody>
