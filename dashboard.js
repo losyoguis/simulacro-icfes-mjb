@@ -47,6 +47,9 @@ const els = {
   teacherReportPanel: document.getElementById("teacherReportPanel"),
   teacherReportContent: document.getElementById("teacherReportContent"),
   teacherReportPdfBtn: document.getElementById("teacherReportPdfBtn"),
+  studentPersonalReportPanel: document.getElementById("studentPersonalReportPanel"),
+  studentPersonalReportContent: document.getElementById("studentPersonalReportContent"),
+  studentPersonalReportPdfBtn: document.getElementById("studentPersonalReportPdfBtn"),
   studentTable: document.getElementById("studentTableBody"),
   individualPanel: document.getElementById("individualPanel"),
   individualTitle: document.getElementById("individualTitle"),
@@ -208,6 +211,8 @@ function initDashboard() {
   document.documentElement.dataset.theme = savedTheme;
   els.themeBtn.textContent = savedTheme === "dark" ? "☀️" : "🌙";
 
+  setupCalendarDateFields();
+
   els.themeBtn.addEventListener("click", () => {
     const current = document.documentElement.dataset.theme === "dark" ? "dark" : "light";
     const next = current === "dark" ? "light" : "dark";
@@ -222,6 +227,8 @@ function initDashboard() {
   if (els.deleteBtn) els.deleteBtn.addEventListener("click", deleteSheetData);
   if (els.teacherReportPdfBtn) els.teacherReportPdfBtn.addEventListener("click", exportTeacherReportPdf);
   if (els.teacherReportContent) els.teacherReportContent.addEventListener("click", handleTeacherSubjectReportClick);
+  if (els.studentPersonalReportPdfBtn) els.studentPersonalReportPdfBtn.addEventListener("click", exportStudentPersonalReportPdf);
+  if (els.studentPersonalReportContent) els.studentPersonalReportContent.addEventListener("click", handleStudentPersonalReportClick);
   if (els.studentTable) els.studentTable.addEventListener("click", handleStudentTablePdfClick);
   [els.group, els.section, els.areaFilter, els.student, els.from, els.to].filter(Boolean).forEach(input => input.addEventListener("change", renderDashboard));
   els.clear.addEventListener("click", () => {
@@ -237,6 +244,46 @@ function initDashboard() {
   loadDashboardData();
 }
 
+function setupCalendarDateFields() {
+  [els.from, els.to].filter(Boolean).forEach(input => {
+    input.classList.add("calendar-date-input");
+    input.setAttribute("inputmode", "none");
+    input.setAttribute("autocomplete", "off");
+    input.setAttribute("title", "Selecciona la fecha desde el calendario");
+
+    const openCalendar = () => {
+      if (typeof input.showPicker === "function") {
+        try {
+          input.showPicker();
+        } catch (error) {
+          // Algunos navegadores solo permiten showPicker con interacción directa del usuario.
+        }
+      }
+    };
+
+    input.addEventListener("click", openCalendar);
+    input.addEventListener("pointerdown", () => {
+      window.setTimeout(openCalendar, 0);
+    });
+    input.addEventListener("keydown", event => {
+      const allowedToClear = ["Backspace", "Delete"];
+      const allowedNavigation = ["Tab", "Escape", "Enter", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+      if (allowedToClear.includes(event.key)) return;
+      if (allowedNavigation.includes(event.key)) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          openCalendar();
+        }
+        return;
+      }
+      event.preventDefault();
+      openCalendar();
+    });
+    input.addEventListener("paste", event => event.preventDefault());
+    input.addEventListener("drop", event => event.preventDefault());
+  });
+}
+
 
 function applyDashboardRoleRestrictions() {
   const readOnly = isDashboardTeacherRole() || isDashboardStudentRole();
@@ -244,6 +291,7 @@ function applyDashboardRoleRestrictions() {
   if (els.deleteBtn) els.deleteBtn.classList.toggle("hidden", readOnly);
   if (els.sheets) els.sheets.classList.toggle("hidden", readOnly);
   if (els.teacherReportPanel) els.teacherReportPanel.classList.toggle("hidden", student);
+  if (els.studentPersonalReportPanel) els.studentPersonalReportPanel.classList.toggle("hidden", !student);
   if (els.group) els.group.disabled = student;
   if (els.student) els.student.disabled = student;
 }
@@ -1001,6 +1049,7 @@ function renderDashboard() {
   renderQuestionChart(details);
   renderRecommendations(summary, records, details);
   renderTeacherReport(records, details);
+  renderStudentPersonalReport();
   renderStudentTable(records);
   renderIndividualPanel(records);
 }
@@ -1263,6 +1312,319 @@ function renderTeacherReport(records, details) {
       </article>
     `;
   }).join('');
+}
+
+
+function getStudentReportBaseData() {
+  const data = dashboardState.data || { records: [], details: [] };
+  const email = getDashboardAccessEmail();
+  const section = els.section ? els.section.value : '';
+  const from = els.from && els.from.value ? new Date(`${els.from.value}T00:00:00`) : null;
+  const to = els.to && els.to.value ? new Date(`${els.to.value}T23:59:59`) : null;
+
+  const records = (data.records || []).filter(record => {
+    if (email && getRecordEmail(record) !== email) return false;
+    if (section && getSectionKey(record) !== section) return false;
+    const date = getRecordDate(record);
+    if (from && date && date < from) return false;
+    if (to && date && date > to) return false;
+    return true;
+  });
+
+  const allowed = new Set(records.map(getRecordAttemptKey));
+  const details = (data.details || []).filter(item => {
+    if (allowed.has(getDetailAttemptKey(item))) return true;
+    if (email && getRecordEmail(item) !== email) return false;
+    if (section && getSectionKey(item) !== section) return false;
+    return !from && !to;
+  });
+
+  return { records, details };
+}
+
+function getStudentPersonalAreaRows(records, details) {
+  const stats = summarizeAreas(records);
+  return Object.entries(stats).map(([area, stat]) => {
+    const percent = stat.total ? round((stat.correct / stat.total) * 100, 1) : 0;
+    const topics = buildTopicStats(details).filter(topic => areaNameMatches(topic.area, area)).slice(0, 4);
+    const questions = buildSubjectQuestionStats(details, area).slice(0, 5);
+    return {
+      area,
+      total: stat.total,
+      correct: stat.correct,
+      percent,
+      priority: teacherPriorityLabel(percent),
+      topics,
+      questions,
+      recommendation: studentAreaRecommendation(area, percent, topics, questions)
+    };
+  }).sort((a, b) => a.percent - b.percent || a.area.localeCompare(b.area));
+}
+
+function studentAreaRecommendation(area, percent, topics, questions) {
+  const mainTopic = topics && topics.length ? topics[0] : null;
+  const mainQuestion = questions && questions.length ? questions[0] : null;
+  const parts = [];
+  if (percent < 40) parts.push(`Prioriza ${area}: repasa conceptos base, resuelve ejercicios guiados y revisa cuidadosamente los distractores.`);
+  else if (percent < 60) parts.push(`Refuerza ${area}: practica preguntas tipo Saber 11 y explica por escrito el porqué de cada respuesta.`);
+  else if (percent < 75) parts.push(`Mantén seguimiento en ${area}: identifica errores recurrentes y realiza prácticas cortas cronometradas.`);
+  else parts.push(`Fortaleza en ${area}: continúa con retos de profundización y preguntas de mayor complejidad.`);
+  if (mainTopic) parts.push(`Tema sugerido: ${mainTopic.topic}.`);
+  if (mainQuestion) parts.push(`Pregunta para revisar: P${mainQuestion.number} (${mainQuestion.percentError}% dificultad).`);
+  return parts.join(' ');
+}
+
+function renderStudentPersonalReport() {
+  if (!els.studentPersonalReportPanel || !els.studentPersonalReportContent) return;
+  if (!isDashboardStudentRole()) {
+    els.studentPersonalReportPanel.classList.add('hidden');
+    return;
+  }
+  els.studentPersonalReportPanel.classList.remove('hidden');
+
+  const { records, details } = getStudentReportBaseData();
+  if (!records.length) {
+    els.studentPersonalReportContent.innerHTML = emptyBlock('Aún no tienes resultados registrados con los filtros actuales. Presenta el simulacro o cambia los filtros.');
+    if (els.studentPersonalReportPdfBtn) els.studentPersonalReportPdfBtn.disabled = true;
+    return;
+  }
+  if (els.studentPersonalReportPdfBtn) els.studentPersonalReportPdfBtn.disabled = false;
+
+  const students = latestStudents(records);
+  const student = students[0];
+  const latest = records.slice().sort((a, b) => dateValue(b.timestampISO || b.timestamp || b.finishedAtLabel) - dateValue(a.timestampISO || a.timestamp || a.finishedAtLabel))[0];
+  const avgScore = round(average(records.map(record => record.score)), 1);
+  const sections = unique(records.map(sectionLabelForRecord)).join(' · ') || 'Sección no registrada';
+  const areaRows = getStudentPersonalAreaRows(records, details);
+  const critical = questionStats(details).sort((a, b) => a.percentCorrect - b.percentCorrect || b.total - a.total).slice(0, 8);
+  const areaCards = areaRows.length ? areaRows.map(area => {
+    const topicsHtml = area.topics.length
+      ? area.topics.slice(0, 3).map(topic => `<li><strong>${escapeHtml(topic.topic)}</strong>: ${topic.percentError}% dificultad${topic.questions.length ? ` | Preguntas: ${topic.questions.map(q => `P${q}`).join(', ')}` : ''}</li>`).join('')
+      : '<li>No hay temas críticos registrados para esta asignatura.</li>';
+    const questionsHtml = area.questions.length
+      ? area.questions.slice(0, 4).map(q => `P${q.number} (${q.percentError}% dificultad)`).join(', ')
+      : 'Sin preguntas críticas registradas';
+    return `
+      <article class="teacher-area-card student-subject-card">
+        <div class="teacher-area-head">
+          <div>
+            <h4>${escapeHtml(area.area)}</h4>
+            <p>${escapeHtml(area.priority)} | ${area.correct}/${area.total} correctas</p>
+          </div>
+          <strong>${area.percent}%</strong>
+        </div>
+        <ul class="teacher-topic-list">${topicsHtml}</ul>
+        <p class="teacher-recommendation"><strong>Preguntas para revisar:</strong> ${escapeHtml(questionsHtml)}</p>
+        <p class="teacher-recommendation">${escapeHtml(area.recommendation)}</p>
+        <button class="secondary-btn teacher-subject-pdf-btn" type="button" data-student-subject-pdf="${escapeAttr(area.area)}">Descargar mi PDF de esta asignatura</button>
+      </article>
+    `;
+  }).join('') : emptyBlock('Sin datos por asignatura para este estudiante.');
+
+  const criticalHtml = critical.length
+    ? critical.map(q => `<li><strong>P${q.number} · ${escapeHtml(q.area)}</strong>: ${Math.round(100 - q.percentCorrect)}% dificultad personal.</li>`).join('')
+    : '<li>No hay preguntas críticas registradas para tu usuario.</li>';
+
+  els.studentPersonalReportContent.innerHTML = `
+    <div class="individual-summary-grid student-personal-summary">
+      ${kpiCard('Estudiante', student ? student.studentName : latest.studentName, latest.group || 'Grupo no registrado')}
+      ${kpiCard('Promedio personal', `${avgScore}%`, levelForScore(avgScore))}
+      ${kpiCard('Intentos revisados', String(records.length), sections)}
+      ${kpiCard('Área prioritaria', areaRows.length ? `${areaRows[0].area} (${areaRows[0].percent}%)` : 'Sin datos', 'Para reforzar primero')}
+    </div>
+    <div class="student-personal-guidance recommendation-item">
+      <strong>Lectura general:</strong> ${escapeHtml(recommendationForScore(avgScore))}
+    </div>
+    <div class="student-critical-box">
+      <h4>Preguntas que debes revisar</h4>
+      <ul class="teacher-topic-list">${criticalHtml}</ul>
+    </div>
+    <div class="student-personal-report-grid">${areaCards}</div>
+  `;
+}
+
+function handleStudentPersonalReportClick(event) {
+  const btn = event.target.closest('[data-student-subject-pdf]');
+  if (!btn) return;
+  exportStudentSubjectReportPdf(btn.getAttribute('data-student-subject-pdf') || '');
+}
+
+function exportStudentPersonalReportPdf() {
+  if (!isDashboardStudentRole()) {
+    setStatus('Este informe personalizado solo está disponible con acceso de estudiante.', 'warning');
+    return;
+  }
+  const { records, details } = getStudentReportBaseData();
+  if (!records.length) {
+    setStatus('No hay resultados personales para generar el informe.', 'warning');
+    return;
+  }
+  try {
+    if (els.studentPersonalReportPdfBtn) {
+      els.studentPersonalReportPdfBtn.disabled = true;
+      els.studentPersonalReportPdfBtn.textContent = 'Creando informe...';
+    }
+    const pdf = createStudentPersonalReportPdf(records, details);
+    const latest = records.slice().sort((a, b) => dateValue(b.timestampISO || b.timestamp || b.finishedAtLabel) - dateValue(a.timestampISO || a.timestamp || a.finishedAtLabel))[0];
+    const filename = `mi-informe-icfes-${slugifyPdf(latest.studentName)}-${compactDate(new Date())}.pdf`;
+    downloadBlob(filename, new Blob([pdf], { type: 'application/pdf' }), { keepOpen: true });
+    setStatus('Informe personalizado del estudiante generado correctamente.', 'success');
+  } catch (error) {
+    console.error(error);
+    setStatus(`No fue posible generar el informe personalizado. Detalle: ${error.message || error}`, 'error');
+  } finally {
+    if (els.studentPersonalReportPdfBtn) {
+      els.studentPersonalReportPdfBtn.disabled = false;
+      els.studentPersonalReportPdfBtn.textContent = 'Descargar mi informe PDF';
+    }
+  }
+}
+
+function exportStudentSubjectReportPdf(areaName) {
+  const { records, details } = getStudentReportBaseData();
+  const area = String(areaName || '').trim();
+  if (!area || !records.length) {
+    setStatus('No hay datos personales para generar el informe por asignatura.', 'warning');
+    return;
+  }
+  try {
+    const pdf = createStudentSubjectReportPdf(area, records, details);
+    const latest = records.slice().sort((a, b) => dateValue(b.timestampISO || b.timestamp || b.finishedAtLabel) - dateValue(a.timestampISO || a.timestamp || a.finishedAtLabel))[0];
+    const filename = `mi-informe-${slugifyPdf(area)}-${slugifyPdf(latest.studentName)}-${compactDate(new Date())}.pdf`;
+    downloadBlob(filename, new Blob([pdf], { type: 'application/pdf' }), { keepOpen: true });
+    setStatus(`Informe personalizado de ${area} generado correctamente.`, 'success');
+  } catch (error) {
+    console.error(error);
+    setStatus(`No fue posible generar el informe de ${area}. Detalle: ${error.message || error}`, 'error');
+  }
+}
+
+function createStudentPersonalReportPdf(records, details) {
+  const pageWidth = 595.28;
+  const pageHeight = 841.89;
+  const marginX = 42;
+  const rightX = pageWidth - marginX;
+  const colors = {
+    primary: [0.13, 0.31, 0.73],
+    accent: [0.02, 0.65, 0.47],
+    danger: [0.85, 0.31, 0.31],
+    warning: [0.96, 0.62, 0.04],
+    text: [0.06, 0.13, 0.20],
+    muted: [0.38, 0.45, 0.55],
+    line: [0.86, 0.90, 0.95],
+    panel: [0.97, 0.98, 0.99],
+    softBlue: [0.95, 0.98, 1],
+    white: [1, 1, 1]
+  };
+  const latest = records.slice().sort((a, b) => dateValue(b.timestampISO || b.timestamp || b.finishedAtLabel) - dateValue(a.timestampISO || a.timestamp || a.finishedAtLabel))[0];
+  const avgScore = round(average(records.map(record => record.score)), 1);
+  const areaRows = getStudentPersonalAreaRows(records, details);
+  const critical = questionStats(details).sort((a, b) => a.percentCorrect - b.percentCorrect || b.total - a.total).slice(0, 10);
+  const pages = [];
+  const totalPages = Math.max(2, 1 + areaRows.length);
+
+  const cover = [];
+  pdfRect(cover, 0, 0, pageWidth, pageHeight, colors.white);
+  pdfText(cover, 'INFORME PERSONALIZADO DEL ESTUDIANTE', marginX, 804, 14, true, colors.primary);
+  pdfText(cover, DASHBOARD_INSTITUTION, marginX, 784, 10.5, true, colors.text);
+  pdfText(cover, `${latest.studentName || 'Estudiante'} | ${latest.group || 'Grupo no registrado'} | ${latest.email || ''}`, marginX, 764, 9, false, colors.muted, 110);
+  pdfText(cover, `Generado: ${formatDateTime(new Date().toISOString())}`, marginX, 748, 8.5, false, colors.muted);
+
+  const cards = [
+    ['Promedio personal', `${avgScore}%`, colors.primary],
+    ['Nivel', levelForScore(avgScore), colors.accent],
+    ['Intentos', String(records.length), colors.primary],
+    ['Area prioritaria', areaRows.length ? areaRows[0].area : 'Sin datos', colors.danger]
+  ];
+  cards.forEach((card, index) => {
+    const x = marginX + (index % 2) * 250;
+    const y = 690 - Math.floor(index / 2) * 74;
+    pdfRoundRect(cover, x, y, 232, 56, 8, colors.panel, colors.line);
+    pdfText(cover, card[0], x + 12, y + 36, 8, false, colors.muted, 30);
+    pdfText(cover, card[1], x + 12, y + 15, 12.2, true, card[2], 34);
+  });
+
+  let y = 520;
+  pdfText(cover, 'RESUMEN GENERAL POR ASIGNATURA', marginX, y, 11, true, colors.text);
+  y -= 24;
+  areaRows.forEach(area => {
+    if (y < 190) return;
+    pdfDashboardBar(cover, area.area, area.percent, `${area.priority} | ${area.correct}/${area.total} correctas`, marginX, y, 330, area.percent < 60 ? colors.danger : colors.accent, colors);
+    y -= 32;
+  });
+  y -= 8;
+  pdfText(cover, 'PREGUNTAS QUE DEBES REVISAR', marginX, y, 10.5, true, colors.text);
+  y -= 22;
+  if (critical.length) {
+    critical.slice(0, 6).forEach(q => {
+      if (y < 68) return;
+      pdfText(cover, `P${q.number} - ${q.area}: ${Math.round(100 - q.percentCorrect)}% dificultad personal`, marginX, y, 8.4, false, colors.text, 105);
+      y -= 16;
+    });
+  } else {
+    pdfText(cover, 'No hay preguntas críticas registradas para tu usuario.', marginX, y, 8.4, false, colors.muted, 105);
+  }
+  pdfText(cover, `Pagina 1 de ${totalPages}`, marginX, 30, 8, false, colors.muted);
+  pages.push(cover.join('\n'));
+
+  areaRows.forEach((area, index) => {
+    const ops = [];
+    pdfRect(ops, 0, 0, pageWidth, pageHeight, colors.white);
+    pdfText(ops, `ASIGNATURA: ${area.area.toUpperCase()}`, marginX, 804, 13, true, colors.primary);
+    pdfText(ops, `${area.priority} | Resultado personal: ${area.percent}% | ${area.correct}/${area.total} correctas`, marginX, 782, 8.8, false, colors.muted, 110);
+    let yy = 740;
+    pdfDashboardBar(ops, area.area, area.percent, `${area.correct}/${area.total} correctas`, marginX, yy, 360, area.percent < 60 ? colors.danger : colors.accent, colors);
+    yy -= 58;
+    pdfText(ops, 'TEMAS PARA TRABAJAR', marginX, yy, 10.8, true, colors.text);
+    yy -= 24;
+    if (area.topics.length) {
+      area.topics.slice(0, 6).forEach((topic, topicIndex) => {
+        if (yy < 248) return;
+        pdfRoundRect(ops, marginX, yy - 38, rightX - marginX, 42, 6, colors.panel, colors.line);
+        pdfText(ops, `${topicIndex + 1}. ${topic.topic}`, marginX + 12, yy - 8, 8.5, true, colors.text, 82);
+        const qText = topic.questions.length ? ` | Preguntas: ${topic.questions.map(q => `P${q}`).join(', ')}` : '';
+        pdfText(ops, `${topic.percentError}% dificultad personal${qText}`, marginX + 12, yy - 26, 7.8, false, colors.muted, 100);
+        yy -= 50;
+      });
+    } else {
+      pdfText(ops, 'No hay temas críticos registrados en esta asignatura.', marginX, yy, 8.5, false, colors.muted, 100);
+      yy -= 24;
+    }
+    yy -= 8;
+    pdfText(ops, 'PREGUNTAS ESPECIFICAS PARA REVISAR', marginX, yy, 10.8, true, colors.text);
+    yy -= 24;
+    if (area.questions.length) {
+      area.questions.slice(0, 8).forEach(q => {
+        if (yy < 132) return;
+        pdfText(ops, `P${q.number}: ${q.percentError}% dificultad | Correctas ${q.correct}/${q.total} | ${q.component}`, marginX, yy, 8.1, false, colors.text, 108);
+        yy -= 16;
+      });
+    } else {
+      pdfText(ops, 'Sin preguntas críticas registradas para esta asignatura.', marginX, yy, 8.5, false, colors.muted, 105);
+    }
+    pdfRoundRect(ops, marginX, 54, rightX - marginX, 52, 8, colors.softBlue, colors.line);
+    pdfText(ops, 'ORIENTACION PERSONAL', marginX + 14, 88, 8.4, true, colors.primary);
+    pdfText(ops, area.recommendation, marginX + 14, 72, 7.4, false, colors.text, 112);
+    pdfText(ops, `Pagina ${index + 2} de ${totalPages}`, marginX, 30, 8, false, colors.muted);
+    pages.push(ops.join('\n'));
+  });
+
+  if (!areaRows.length) {
+    const ops = [];
+    pdfRect(ops, 0, 0, pageWidth, pageHeight, colors.white);
+    pdfText(ops, 'SIN DATOS POR ASIGNATURA', marginX, 804, 13, true, colors.primary);
+    pdfText(ops, 'Aun no hay suficiente informacion para construir recomendaciones por asignatura.', marginX, 782, 9, false, colors.muted, 110);
+    pdfText(ops, 'Pagina 2 de 2', marginX, 30, 8, false, colors.muted);
+    pages.push(ops.join('\n'));
+  }
+  return buildPdfFromStreams(pages, pageWidth, pageHeight);
+}
+
+function createStudentSubjectReportPdf(areaName, records, details) {
+  const subjectRecords = records.map(record => projectRecordToArea(record, areaName)).filter(Boolean);
+  const subjectDetails = details.filter(item => areaNameMatches(item.area, areaName));
+  if (!subjectRecords.length) throw new Error('No hay registros personales para esta asignatura.');
+  return createStudentPersonalReportPdf(subjectRecords, subjectDetails);
 }
 
 function exportTeacherReportPdf() {
@@ -2038,6 +2400,7 @@ function renderNoFilteredData() {
   els.questionChart.innerHTML = emptyBlock("Sin datos.");
   els.recommendations.innerHTML = `<div class="recommendation-item">No se encontraron registros con los filtros seleccionados.</div>`;
   if (els.teacherReportContent) els.teacherReportContent.innerHTML = emptyBlock("No hay información suficiente para generar el informe docente con los filtros actuales.");
+  if (els.studentPersonalReportContent) els.studentPersonalReportContent.innerHTML = emptyBlock("No hay resultados personales con los filtros actuales.");
   els.studentTable.innerHTML = `<tr><td colspan="8">Sin registros para mostrar.</td></tr>`;
   els.individualPanel.classList.add("hidden");
 }
@@ -2049,6 +2412,7 @@ function renderEmptyState() {
   els.areaChart.innerHTML = emptyBlock("Sin datos.");
   els.questionChart.innerHTML = emptyBlock("Sin datos.");
   els.recommendations.innerHTML = `<div class="recommendation-item">Cuando los estudiantes finalicen el simulacro y envíen el informe, los datos aparecerán aquí automáticamente.</div>`;
+  if (els.studentPersonalReportContent) els.studentPersonalReportContent.innerHTML = emptyBlock("Aún no hay resultados personales para mostrar.");
   els.studentTable.innerHTML = `<tr><td colspan="8">Sin registros para mostrar.</td></tr>`;
   els.individualPanel.classList.add("hidden");
 }

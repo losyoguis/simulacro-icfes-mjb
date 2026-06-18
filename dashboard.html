@@ -68,13 +68,15 @@
             <option value="">Todos los estudiantes</option>
           </select>
         </label>
-        <label class="field">
+        <label class="field date-field">
           <span>Desde</span>
-          <input id="filterFrom" type="date" />
+          <input id="filterFrom" class="calendar-date-input" type="date" inputmode="none" autocomplete="off" title="Selecciona la fecha desde el calendario" aria-label="Seleccionar fecha desde" />
+          <small class="date-picker-hint">Seleccionar en calendario</small>
         </label>
-        <label class="field">
+        <label class="field date-field">
           <span>Hasta</span>
-          <input id="filterTo" type="date" />
+          <input id="filterTo" class="calendar-date-input" type="date" inputmode="none" autocomplete="off" title="Selecciona la fecha desde el calendario" aria-label="Seleccionar fecha hasta" />
+          <small class="date-picker-hint">Seleccionar en calendario</small>
         </label>
         <div class="dashboard-filter-actions">
           <button id="clearFiltersBtn" class="secondary-btn" type="button">Limpiar filtros</button>
@@ -150,6 +152,18 @@
           <button id="teacherReportPdfBtn" class="secondary-btn" type="button">Descargar informe docente PDF</button>
         </div>
         <div id="teacherReportContent" class="teacher-report-content"></div>
+      </section>
+
+      <section class="dashboard-card student-personal-report-card hidden" id="studentPersonalReportPanel">
+        <div class="dashboard-card-head">
+          <div>
+            <p class="eyebrow">Sección estudiantes</p>
+            <h3>Mi informe personalizado</h3>
+            <p class="dashboard-card-subtitle">Consulta tu lectura general y las recomendaciones particulares por asignatura.</p>
+          </div>
+          <button id="studentPersonalReportPdfBtn" class="secondary-btn" type="button">Descargar mi informe PDF</button>
+        </div>
+        <div id="studentPersonalReportContent" class="student-personal-report-content"></div>
       </section>
 
       <section class="dashboard-card">

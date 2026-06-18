@@ -2695,6 +2695,37 @@ h3 { font-size: 1.08rem; }
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary), transparent 84%);
 }
 
+
+/* Filtros de fecha: selección obligatoria desde calendario */
+.date-field {
+  position: relative;
+}
+
+.calendar-date-input {
+  cursor: pointer;
+  caret-color: transparent;
+  padding-right: 48px !important;
+}
+
+.calendar-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+.date-picker-hint {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  margin-top: -2px;
+}
+
+html[data-theme="dark"] .calendar-date-input::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.5);
+}
+
 .field-wide {
   grid-column: span 1;
 }
@@ -11431,4 +11462,43 @@ html[data-theme="dark"] .teacher-area-card {
 .teacher-subject-pdf-btn {
   margin-top: 12px;
   width: 100%;
+}
+
+
+/* Informe personalizado para estudiantes */
+.student-personal-report-content {
+  display: grid;
+  gap: 16px;
+}
+
+.student-personal-summary {
+  margin-bottom: 4px;
+}
+
+.student-personal-report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.student-critical-box,
+.student-personal-guidance {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--primary), transparent 94%);
+}
+
+.student-critical-box h4 {
+  margin: 0 0 8px;
+}
+
+.student-subject-card .teacher-subject-pdf-btn {
+  margin-top: 12px;
+}
+
+html[data-theme="dark"] .student-critical-box,
+html[data-theme="dark"] .student-personal-guidance {
+  background: rgba(30, 64, 175, .16) !important;
+  border-color: rgba(148, 163, 184, .35) !important;
 }
