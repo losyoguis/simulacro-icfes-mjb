@@ -626,34 +626,30 @@ function closeDashboardUtilityModal() {
 }
 
 function loadDashboardData(options = {}) {
-  if (!options.silent) setStatus("Actualizando datos en tiempo real desde Google Sheets...", "info");
+  if (!options.silent) setStatus("Actualizando datos en vivo desde Apps Script y Google Sheets...", "info");
   dashboardLastLoadAt = Date.now();
   els.refreshBtn.disabled = true;
   els.sheets.href = DASHBOARD_SPREADSHEET_URL;
   els.sheets.classList.remove("hidden");
   applyDashboardRoleRestrictions();
 
-  loadDashboardDataFromGoogleSheets()
+  // Primero consultamos Apps Script porque lee la hoja en vivo con SpreadsheetApp.
+  // La lectura directa por GViz se deja como respaldo, porque Google puede entregar datos cacheados.
+  loadDashboardDataFromAppsScript()
     .catch(error => {
-      console.warn("Lectura directa de Google Sheets no disponible. Se intentará Apps Script.", error);
-      if (!options.silent) setStatus("Lectura directa no disponible. Intentando Apps Script actualizado...", "warning");
-      return loadDashboardDataFromAppsScript();
+      console.warn("Apps Script no respondió con datos actuales. Se intentará Google Sheets directo como respaldo.", error);
+      if (!options.silent) setStatus("Apps Script no respondió. Intentando lectura directa de Google Sheets...", "warning");
+      return loadDashboardDataFromGoogleSheets();
     })
     .then(data => {
-      if (!data || data.ok === false) throw new Error(data && data.message ? data.message : "No se recibieron datos válidos.");
-      if ((!data.records || !data.records.length) && data.source === "Google Sheets directo") {
-        return loadDashboardDataFromAppsScript().catch(() => data);
-      }
-      return data;
-    })
-    .then(data => {
-      if (!data || data.ok === false) throw new Error(data && data.message ? data.message : "No se recibieron datos válidos.");
+      if (!isValidDashboardData(data)) throw new Error(data && data.message ? data.message : "No se recibieron registros válidos del dashboard.");
       dashboardState.data = normalizeDashboardData(data);
       populateFilterOptions();
       renderDashboard();
       const count = dashboardState.data.records.length;
+      const detailsCount = dashboardState.data.details.length;
       const source = data.source ? ` Fuente: ${data.source}.` : "";
-      setStatus(`Datos actualizados hasta este momento: ${count} intento(s). Última actualización: ${formatDateTime(data.updatedAt || new Date().toISOString())}.${source}`, "success");
+      setStatus(`Datos actualizados hasta este momento: ${count} intento(s) y ${detailsCount} respuesta(s) detallada(s). Última actualización: ${formatDateTime(data.updatedAt || new Date().toISOString())}.${source}`, "success");
       if (data.spreadsheetUrl) {
         els.sheets.href = data.spreadsheetUrl;
         els.sheets.classList.remove("hidden");
@@ -662,21 +658,33 @@ function loadDashboardData(options = {}) {
     })
     .catch(error => {
       console.error(error);
-      setStatus(`No fue posible cargar el dashboard actualizado. Verifica permisos del Google Sheets y el Web App. Detalle: ${error.message}`, "error");
+      setStatus(`No fue posible cargar el dashboard actualizado. Verifica que el Apps Script esté implementado y tenga permisos sobre el Google Sheets. Detalle: ${error.message}`, "error");
       renderEmptyState();
     })
     .finally(() => { els.refreshBtn.disabled = false; });
 }
 
+function isValidDashboardData(data) {
+  return Boolean(data && data.ok !== false && Array.isArray(data.records) && Array.isArray(data.details));
+}
+
 function loadDashboardDataFromAppsScript() {
-  const query = `?accion=dashboard-data&fresh=1&cache=0&cacheBust=${Date.now()}`;
-  return fetchJsonpFromEndpoints(DASHBOARD_ENDPOINTS, query, 90000)
-    .then(data => {
-      if (!data || data.ok === false) throw new Error(data && data.message ? data.message : "Respuesta inválida de Apps Script.");
-      data.source = "Apps Script actualizado";
-      data.updatedAt = data.updatedAt || new Date().toISOString();
-      return data;
+  const actions = ["dashboard-data", "dashboard-data-fresh", "dashboard", "obtener-dashboard", "listar-resultados"];
+  let lastError = null;
+  return actions.reduce((chain, action) => {
+    return chain.catch(error => {
+      lastError = error;
+      const query = `?accion=${encodeURIComponent(action)}&fresh=1&nocache=1&cache=0&ts=${Date.now()}&r=${Math.random().toString(36).slice(2)}`;
+      return fetchJsonpFromEndpoints(DASHBOARD_ENDPOINTS, query, 90000).then(data => {
+        if (!isValidDashboardData(data)) throw new Error(`La acción ${action} no devolvió records/details actualizados.`);
+        data.source = `Apps Script en vivo (${action})`;
+        data.updatedAt = data.updatedAt || new Date().toISOString();
+        return data;
+      });
     });
+  }, Promise.reject(new Error("inicio"))).catch(error => {
+    throw error && error.message !== "inicio" ? error : (lastError || new Error("No se pudo consultar Apps Script."));
+  });
 }
 
 function loadDashboardDataFromGoogleSheets() {
@@ -767,7 +775,7 @@ function fetchGvizTable({ sheetName = "", gid = "" } = {}) {
     const callbackName = `gvizCallback_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const selector = gid ? `gid=${encodeURIComponent(gid)}` : `sheet=${encodeURIComponent(sheetName)}`;
     const tqx = `out:json;responseHandler:${callbackName}`;
-    const url = `https://docs.google.com/spreadsheets/d/${DASHBOARD_SPREADSHEET_ID}/gviz/tq?${selector}&headers=1&tq=${encodeURIComponent('select *')}&tqx=${encodeURIComponent(tqx)}&cacheBust=${Date.now()}`;
+    const url = `https://docs.google.com/spreadsheets/d/${DASHBOARD_SPREADSHEET_ID}/gviz/tq?${selector}&headers=1&tq=${encodeURIComponent('select *')}&tqx=${encodeURIComponent(tqx)}&fresh=1&nocache=1&cacheBust=${Date.now()}&r=${Math.random().toString(36).slice(2)}`;
     const script = document.createElement("script");
     const timer = setTimeout(() => {
       cleanup();
