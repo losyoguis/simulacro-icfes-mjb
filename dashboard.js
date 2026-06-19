@@ -7,6 +7,7 @@ const DASHBOARD_RESULTS_SHEET_NAME = "Resultados";
 const DASHBOARD_DETAILS_SHEET_NAME = "Respuestas_Detalladas";
 const DASHBOARD_RESULTS_SHEET_GID = "1281155333";
 const DASHBOARD_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${DASHBOARD_SPREADSHEET_ID}/edit`;
+const DASHBOARD_TRAINING_PLATFORM_URL = "https://sites.google.com/iemanueljbetancur.edu.co/icfes-digital-mjb/icfes-digital-mjb";
 const DASHBOARD_ALLOWED_GROUPS = ["11-1", "11-2", "11-3"];
 const DASHBOARD_ACCESS_PASSWORD = "MJB-ICFES-2026";
 const DASHBOARD_TEACHER_USER = "docente";
@@ -29,6 +30,7 @@ const els = {
   themeBtn: document.getElementById("themeBtn"),
   refreshBtn: document.getElementById("refreshDashboardBtn"),
   printBtn: document.getElementById("printDashboardBtn"),
+  resendBtn: document.getElementById("resendResultsBtn"),
   deleteBtn: document.getElementById("deleteSheetDataBtn"),
   group: document.getElementById("filterGroup"),
   section: document.getElementById("filterSection"),
@@ -224,6 +226,7 @@ function initDashboard() {
   els.refreshBtn.addEventListener("click", loadDashboardData);
   els.printBtn.addEventListener("click", exportDashboardPdf);
   applyDashboardRoleRestrictions();
+  if (els.resendBtn) els.resendBtn.addEventListener("click", openResendResultsModal);
   if (els.deleteBtn) els.deleteBtn.addEventListener("click", deleteSheetData);
   if (els.teacherReportPdfBtn) els.teacherReportPdfBtn.addEventListener("click", exportTeacherReportPdf);
   if (els.teacherReportContent) els.teacherReportContent.addEventListener("click", handleTeacherSubjectReportClick);
@@ -289,6 +292,7 @@ function applyDashboardRoleRestrictions() {
   const readOnly = isDashboardTeacherRole() || isDashboardStudentRole();
   const student = isDashboardStudentRole();
   if (els.deleteBtn) els.deleteBtn.classList.toggle("hidden", readOnly);
+  if (els.resendBtn) els.resendBtn.classList.toggle("hidden", readOnly);
   if (els.sheets) els.sheets.classList.toggle("hidden", readOnly);
   if (els.teacherReportPanel) els.teacherReportPanel.classList.toggle("hidden", student);
   if (els.studentPersonalReportPanel) els.studentPersonalReportPanel.classList.toggle("hidden", !student);
@@ -529,6 +533,89 @@ function compactDate(date) {
   if (Number.isNaN(d.getTime())) return 'fecha';
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+function openResendResultsModal() {
+  closeDashboardUtilityModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'dashboard-utility-overlay';
+  overlay.id = 'dashboardUtilityModal';
+  overlay.innerHTML = `
+    <section class="dashboard-utility-card" role="dialog" aria-modal="true" aria-labelledby="resendResultsTitle">
+      <button class="dialog-close" type="button" data-dashboard-modal-close aria-label="Cerrar">×</button>
+      <p class="eyebrow">Comunicación institucional</p>
+      <h2 id="resendResultsTitle">Reenviar resultados a estudiantes</h2>
+      <p class="dashboard-utility-warning">Se enviará un correo a cada estudiante registrado en el dashboard con su resumen de resultados y una invitación para entrenarse durante vacaciones con los modos de IA.</p>
+      <label class="field">
+        <span>Confirmación obligatoria</span>
+        <input id="resendConfirmPhrase" type="text" autocomplete="off" placeholder="Escribe: REENVIAR RESULTADOS" />
+      </label>
+      <label class="field">
+        <span>Clave institucional</span>
+        <input id="resendPassword" type="password" autocomplete="current-password" placeholder="Clave de administrador" />
+      </label>
+      <div class="dashboard-utility-status" id="resendModalStatus" role="status"></div>
+      <div class="dialog-actions">
+        <button class="secondary-btn" type="button" data-dashboard-modal-close>Cancelar</button>
+        <button class="primary-btn" type="button" id="confirmResendResultsBtn">Enviar correos</button>
+      </div>
+    </section>
+  `;
+  document.body.appendChild(overlay);
+  const phrase = overlay.querySelector('#resendConfirmPhrase');
+  const password = overlay.querySelector('#resendPassword');
+  const status = overlay.querySelector('#resendModalStatus');
+  const confirmBtn = overlay.querySelector('#confirmResendResultsBtn');
+  overlay.querySelectorAll('[data-dashboard-modal-close]').forEach(btn => btn.addEventListener('click', closeDashboardUtilityModal));
+  overlay.addEventListener('click', event => { if (event.target === overlay) closeDashboardUtilityModal(); });
+  overlay.addEventListener('keydown', event => { if (event.key === 'Escape') closeDashboardUtilityModal(); });
+  phrase.focus();
+
+  confirmBtn.addEventListener('click', () => {
+    const phraseValue = (phrase.value || '').trim().toUpperCase();
+    const passwordValue = (password.value || '').trim();
+    if (phraseValue !== 'REENVIAR RESULTADOS') {
+      status.textContent = 'Debes escribir exactamente REENVIAR RESULTADOS para continuar.';
+      status.dataset.kind = 'warning';
+      phrase.focus();
+      return;
+    }
+    if (!passwordValue) {
+      status.textContent = 'Ingresa la clave institucional.';
+      status.dataset.kind = 'warning';
+      password.focus();
+      return;
+    }
+
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Enviando...';
+    if (els.resendBtn) els.resendBtn.disabled = true;
+    status.textContent = 'Conectando con Apps Script y reenviando resultados...';
+    status.dataset.kind = 'warning';
+    setStatus('Reenviando resultados a los estudiantes...', 'warning');
+
+    const query = `?accion=reenviar-resultados-estudiantes&confirmacion=${encodeURIComponent('REENVIAR RESULTADOS')}&clave=${encodeURIComponent(passwordValue)}&url=${encodeURIComponent(DASHBOARD_TRAINING_PLATFORM_URL)}&ts=${Date.now()}`;
+    fetchJsonpFromEndpoints(DASHBOARD_ENDPOINTS, query, 180000)
+      .then(response => {
+        if (!response || response.ok === false) throw new Error(response && response.message ? response.message : 'No fue posible reenviar los resultados.');
+        const msg = `Correos enviados: ${response.sent || 0}. Estudiantes detectados: ${response.totalStudents || 0}. Errores: ${response.failed || 0}.`;
+        status.textContent = msg;
+        status.dataset.kind = response.failed ? 'warning' : 'success';
+        setStatus(msg, response.failed ? 'warning' : 'success');
+        setTimeout(() => { closeDashboardUtilityModal(); loadDashboardData(); }, 2200);
+      })
+      .catch(error => {
+        console.error(error);
+        status.textContent = `No fue posible reenviar resultados. Detalle: ${error.message || error}`;
+        status.dataset.kind = 'error';
+        setStatus(`No fue posible reenviar resultados. Detalle: ${error.message || error}`, 'error');
+      })
+      .finally(() => {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Enviar correos';
+        if (els.resendBtn) els.resendBtn.disabled = false;
+      });
+  });
 }
 
 function deleteSheetData() {
