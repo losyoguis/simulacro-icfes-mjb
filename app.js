@@ -1303,8 +1303,9 @@ function bindGlobalEvents() {
   if (studentDashboardBtn) studentDashboardBtn.addEventListener("click", openStudentDashboardAccessDialog);
   if (teacherDashboardBtn) teacherDashboardBtn.addEventListener("click", openTeacherDashboardAccessDialog);
   if (consultDataBtn) consultDataBtn.addEventListener("click", event => {
+    event.preventDefault();
     event.stopPropagation();
-    toggleConsultDataMenu();
+    openConsultDataDialog();
   });
   if (consultDataDropdown) consultDataDropdown.addEventListener("click", event => {
     const btn = event.target.closest("[data-consult-role]");
@@ -1367,6 +1368,62 @@ function toggleConsultDataMenu(force) {
 
 function closeConsultDataMenu() {
   toggleConsultDataMenu(false);
+}
+
+
+function openConsultDataDialog() {
+  const existing = document.getElementById("consultDataAccessDialog");
+  if (existing) existing.remove();
+  closeConsultDataMenu();
+
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay consult-data-dialog";
+  overlay.id = "consultDataAccessDialog";
+  overlay.innerHTML = `
+    <section class="dialog-card dashboard-access-card" role="dialog" aria-modal="true" aria-labelledby="consultDataAccessTitle" aria-describedby="consultDataAccessHelp">
+      <button class="modal-close" type="button" aria-label="Cerrar" data-consult-close>×</button>
+      <p class="eyebrow">Consulta de resultados</p>
+      <h2 id="consultDataAccessTitle">Consultar datos</h2>
+      <p id="consultDataAccessHelp">Selecciona el tipo de acceso para revisar los resultados del simulador ICFES Digital Saber 11.</p>
+      <div class="consult-role-grid" role="list">
+        <button type="button" class="consult-role-card" data-consult-dialog-role="student">
+          <span>Estudiantes</span>
+          <small>Consulta únicamente tus resultados usando tu correo.</small>
+        </button>
+        <button type="button" class="consult-role-card" data-consult-dialog-role="teacher">
+          <span>Docentes</span>
+          <small>Revisa el dashboard institucional en modo solo lectura.</small>
+        </button>
+        <button type="button" class="consult-role-card" data-consult-dialog-role="admin">
+          <span>Administrador</span>
+          <small>Accede al dashboard y a las opciones institucionales.</small>
+        </button>
+      </div>
+      <div class="dialog-actions">
+        <button class="secondary-btn" type="button" data-consult-close>Cancelar</button>
+      </div>
+    </section>`;
+
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelectorAll("[data-consult-close]").forEach(button => button.addEventListener("click", close));
+  overlay.addEventListener("click", event => {
+    if (event.target === overlay) close();
+  });
+  overlay.addEventListener("keydown", event => {
+    if (event.key === "Escape") close();
+  });
+  overlay.querySelectorAll("[data-consult-dialog-role]").forEach(button => {
+    button.addEventListener("click", () => {
+      const role = button.getAttribute("data-consult-dialog-role");
+      close();
+      if (role === "student") openStudentDashboardAccessDialog();
+      else if (role === "teacher") openTeacherDashboardAccessDialog();
+      else openDashboardAccessDialog();
+    });
+  });
+  const firstOption = overlay.querySelector("[data-consult-dialog-role]");
+  if (firstOption) firstOption.focus();
 }
 
 function handleHomeNavigation() {
