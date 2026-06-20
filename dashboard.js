@@ -720,13 +720,17 @@ function loadDashboardData(options = {}) {
   els.sheets.classList.remove("hidden");
   applyDashboardRoleRestrictions();
 
-  // Primero consultamos Apps Script porque lee la hoja en vivo con SpreadsheetApp.
-  // La lectura directa por GViz se deja como respaldo, porque Google puede entregar datos cacheados.
-  loadDashboardDataFromAppsScript()
+  // Primero consultamos Google Sheets directo por gid para asegurar datos recientes de la pestaña activa.
+  // Si el navegador no tiene permisos para leer la hoja, se usa Apps Script como respaldo.
+  loadDashboardDataFromGoogleSheets()
+    .then(data => {
+      if (!data.records.length) throw new Error("Google Sheets respondió sin registros. Se intentará Apps Script.");
+      return data;
+    })
     .catch(error => {
-      console.warn("Apps Script no respondió con datos actuales. Se intentará Google Sheets directo como respaldo.", error);
-      if (!options.silent) setStatus("Apps Script no respondió. Intentando lectura directa de Google Sheets...", "warning");
-      return loadDashboardDataFromGoogleSheets();
+      console.warn("Google Sheets directo no respondió con registros. Se intentará Apps Script en vivo.", error);
+      if (!options.silent) setStatus("Google Sheets directo no respondió. Intentando Apps Script en vivo...", "warning");
+      return loadDashboardDataFromAppsScript();
     })
     .then(data => {
       if (!isValidDashboardData(data)) throw new Error(data && data.message ? data.message : "No se recibieron registros válidos del dashboard.");
@@ -797,6 +801,9 @@ function loadDashboardDataFromGoogleSheets() {
   return Promise.all([resultPromise, detailPromise]).then(([resultTable, detailTable]) => {
     const records = recordsFromSheetRows(resultTable);
     const details = detailsFromSheetRows(detailTable);
+    if (!records.length) {
+      throw new Error("La lectura directa de Google Sheets no devolvió registros de resultados.");
+    }
     return {
       ok: true,
       source: "Google Sheets directo",
