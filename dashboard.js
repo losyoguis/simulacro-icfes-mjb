@@ -764,6 +764,7 @@ function loadDashboardDataFromAppsScript() {
       const query = `?accion=${encodeURIComponent(action)}&fresh=1&nocache=1&cache=0&ts=${Date.now()}&r=${Math.random().toString(36).slice(2)}`;
       return fetchJsonpFromEndpoints(DASHBOARD_ENDPOINTS, query, 90000).then(data => {
         if (!isValidDashboardData(data)) throw new Error(`La acción ${action} no devolvió records/details actualizados.`);
+        if (!data.records.length) throw new Error(`La acción ${action} respondió, pero no entregó registros. Se intentará lectura directa por gid.`);
         data.source = `Apps Script en vivo (${action})`;
         data.updatedAt = data.updatedAt || new Date().toISOString();
         return data;
@@ -775,10 +776,18 @@ function loadDashboardDataFromAppsScript() {
 }
 
 function loadDashboardDataFromGoogleSheets() {
-  const resultPromise = fetchGvizRows(DASHBOARD_RESULTS_SHEET_NAME)
+  // La hoja activa de resultados puede no llamarse exactamente “Resultados”.
+  // Por eso se consulta primero por gid oficial y luego por nombre como respaldo.
+  const resultPromise = fetchGvizRowsByGid(DASHBOARD_RESULTS_SHEET_GID)
+    .then(table => {
+      if (!table || !Array.isArray(table.rows) || !table.rows.length) {
+        throw new Error(`La hoja gid ${DASHBOARD_RESULTS_SHEET_GID} no devolvió filas.`);
+      }
+      return table;
+    })
     .catch(error => {
-      console.warn(`No se pudo leer la hoja ${DASHBOARD_RESULTS_SHEET_NAME} por nombre. Intentando gid ${DASHBOARD_RESULTS_SHEET_GID}.`, error);
-      return fetchGvizRowsByGid(DASHBOARD_RESULTS_SHEET_GID);
+      console.warn(`No se pudo leer la hoja por gid ${DASHBOARD_RESULTS_SHEET_GID}. Intentando por nombre ${DASHBOARD_RESULTS_SHEET_NAME}.`, error);
+      return fetchGvizRows(DASHBOARD_RESULTS_SHEET_NAME);
     });
   const detailPromise = fetchGvizRows(DASHBOARD_DETAILS_SHEET_NAME).catch(error => {
     console.warn(`No se pudo leer la hoja ${DASHBOARD_DETAILS_SHEET_NAME}. Se continuará sin detalle de respuestas.`, error);
