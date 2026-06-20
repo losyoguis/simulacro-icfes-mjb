@@ -8,7 +8,7 @@ const DASHBOARD_DETAILS_SHEET_NAME = "Respuestas_Detalladas";
 const DASHBOARD_RESULTS_SHEET_GID = "1281155333";
 const DASHBOARD_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${DASHBOARD_SPREADSHEET_ID}/edit`;
 const DASHBOARD_TRAINING_PLATFORM_URL = "https://sites.google.com/iemanueljbetancur.edu.co/icfes-digital-mjb/icfes-digital-mjb";
-const DASHBOARD_ALLOWED_GROUPS = ["11-1", "11-2", "11-3"];
+const DASHBOARD_ALLOWED_GROUPS = ["9-1", "9-2", "9-3", "10-1", "10-2", "10-3", "10-4", "11-1", "11-2", "11-3"];
 const DASHBOARD_ACCESS_PASSWORD = "MJB-ICFES-2026";
 const DASHBOARD_TEACHER_USER = "docente";
 const DASHBOARD_TEACHER_PASSWORD = "MJB-DOCENTE-2026";
@@ -997,11 +997,15 @@ function isSystemTestRecord(record) {
 function normalizeGroupValue(value) {
   if (value === null || value === undefined) return "";
 
-  // Google Sheets puede interpretar grupos como "11-1" como fechas.
+  // Google Sheets puede interpretar grupos como "9-1", "10-2" o "11-3" como fechas.
   // Por eso se normaliza cualquier fecha equivalente al grupo real.
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     const day = value.getUTCDate ? value.getUTCDate() : value.getDate();
     const month = value.getUTCMonth ? value.getUTCMonth() : value.getMonth();
+    const monthNumber = month + 1;
+    if (day === 9 && monthNumber >= 1 && monthNumber <= 3) return `9-${monthNumber}`;
+    if (day === 10 && monthNumber >= 1 && monthNumber <= 4) return `10-${monthNumber}`;
+    if (day === 11 && monthNumber >= 1 && monthNumber <= 3) return `11-${monthNumber}`;
     if (month === 0 && day >= 11 && day <= 13) return `11-${day - 10}`;
   }
 
@@ -1013,20 +1017,48 @@ function normalizeGroupValue(value) {
     .replace(/[\u00A0\u1680\u180E\u2000-\u200D\u2028\u2029\u202F\u205F\u3000\uFEFF]/g, "")
     .trim();
 
-  const direct = clean.match(/^11\s*[-–—/]\s*([123])$/);
-  if (direct) return `11-${direct[1]}`;
+  const direct = clean.match(/^(9|10|11)\s*[-–—/]\s*([1-4])$/);
+  if (direct) {
+    const grade = direct[1];
+    const course = Number(direct[2]);
+    if ((grade === "9" && course <= 3) || (grade === "10" && course <= 4) || (grade === "11" && course <= 3)) return `${grade}-${course}`;
+  }
 
-  const numeric = clean.match(/^11[.,]([123])$/);
-  if (numeric) return `11-${numeric[1]}`;
+  const numeric = clean.match(/^(9|10|11)[.,]([1-4])$/);
+  if (numeric) {
+    const grade = numeric[1];
+    const course = Number(numeric[2]);
+    if ((grade === "9" && course <= 3) || (grade === "10" && course <= 4) || (grade === "11" && course <= 3)) return `${grade}-${course}`;
+  }
 
-  const dateConstructor = clean.match(/Date\(\s*\d{4}\s*,\s*0\s*,\s*(1[123])\s*(?:,|\))/i);
-  if (dateConstructor) return `11-${Number(dateConstructor[1]) - 10}`;
+  const dateConstructor = clean.match(/Date\(\s*\d{4}\s*,\s*(\d{1,2})\s*,\s*(\d{1,2})\s*(?:,|\))/i);
+  if (dateConstructor) {
+    const monthNumber = Number(dateConstructor[1]) + 1;
+    const dayNumber = Number(dateConstructor[2]);
+    if (dayNumber === 9 && monthNumber >= 1 && monthNumber <= 3) return `9-${monthNumber}`;
+    if (dayNumber === 10 && monthNumber >= 1 && monthNumber <= 4) return `10-${monthNumber}`;
+    if (dayNumber === 11 && monthNumber >= 1 && monthNumber <= 3) return `11-${monthNumber}`;
+    if (monthNumber === 1 && dayNumber >= 11 && dayNumber <= 13) return `11-${dayNumber - 10}`;
+  }
 
-  const isoDate = clean.match(/(?:^|\D)20\d{2}-01-(1[123])(?:T|\D|$)/);
-  if (isoDate) return `11-${Number(isoDate[1]) - 10}`;
+  const isoDate = clean.match(/(?:^|\D)20\d{2}-(\d{2})-(\d{2})(?:T|\D|$)/);
+  if (isoDate) {
+    const monthNumber = Number(isoDate[1]);
+    const dayNumber = Number(isoDate[2]);
+    if (dayNumber === 9 && monthNumber >= 1 && monthNumber <= 3) return `9-${monthNumber}`;
+    if (dayNumber === 10 && monthNumber >= 1 && monthNumber <= 4) return `10-${monthNumber}`;
+    if (dayNumber === 11 && monthNumber >= 1 && monthNumber <= 3) return `11-${monthNumber}`;
+    if (monthNumber === 1 && dayNumber >= 11 && dayNumber <= 13) return `11-${dayNumber - 10}`;
+  }
 
-  const slashDate = clean.match(/(?:^|\D)(1[123])[\/-]0?1[\/-]20\d{2}(?:\D|$)/) || clean.match(/(?:^|\D)0?1[\/-](1[123])[\/-]20\d{2}(?:\D|$)/);
-  if (slashDate) return `11-${Number(slashDate[1]) - 10}`;
+  const slashDate = clean.match(/(?:^|\D)(9|10|11)[\/-]0?([1-4])[\/-]20\d{2}(?:\D|$)/) || clean.match(/(?:^|\D)0?([1-4])[\/-](9|10|11)[\/-]20\d{2}(?:\D|$)/);
+  if (slashDate) {
+    const a = Number(slashDate[1]);
+    const b = Number(slashDate[2]);
+    const grade = a >= 9 ? a : b;
+    const course = a >= 9 ? b : a;
+    if ((grade === 9 && course <= 3) || (grade === 10 && course <= 4) || (grade === 11 && course <= 3)) return `${grade}-${course}`;
+  }
 
   if (DASHBOARD_ALLOWED_GROUPS.includes(clean)) return clean;
   return "";

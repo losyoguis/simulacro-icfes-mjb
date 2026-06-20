@@ -2110,6 +2110,13 @@ function renderAccess(pendingScope = null) {
               <span>Grupo</span>
               <select id="studentGroup" required>
                 <option value="">Selecciona el grupo</option>
+                <option value="9-1" ${currentGroup === "9-1" ? "selected" : ""}>9-1</option>
+                <option value="9-2" ${currentGroup === "9-2" ? "selected" : ""}>9-2</option>
+                <option value="9-3" ${currentGroup === "9-3" ? "selected" : ""}>9-3</option>
+                <option value="10-1" ${currentGroup === "10-1" ? "selected" : ""}>10-1</option>
+                <option value="10-2" ${currentGroup === "10-2" ? "selected" : ""}>10-2</option>
+                <option value="10-3" ${currentGroup === "10-3" ? "selected" : ""}>10-3</option>
+                <option value="10-4" ${currentGroup === "10-4" ? "selected" : ""}>10-4</option>
                 <option value="11-1" ${currentGroup === "11-1" ? "selected" : ""}>11-1</option>
                 <option value="11-2" ${currentGroup === "11-2" ? "selected" : ""}>11-2</option>
                 <option value="11-3" ${currentGroup === "11-3" ? "selected" : ""}>11-3</option>
@@ -2149,7 +2156,7 @@ function renderAccess(pendingScope = null) {
     }
 
     if (!group) {
-      error.textContent = "Por favor, selecciona una opción válida: 11-1, 11-2, 11-3, Docente o Invitado.";
+      error.textContent = "Por favor, selecciona una opción válida: 9-1, 9-2, 9-3, 10-1, 10-2, 10-3, 10-4, 11-1, 11-2, 11-3, Docente o Invitado.";
       return;
     }
 
@@ -2189,6 +2196,13 @@ function normalizeGroupInput(value) {
   const raw = String(value || "").replace(/\s+/g, "").trim();
   const normalized = raw.toLowerCase();
   const labels = {
+    "9-1": "9-1",
+    "9-2": "9-2",
+    "9-3": "9-3",
+    "10-1": "10-1",
+    "10-2": "10-2",
+    "10-3": "10-3",
+    "10-4": "10-4",
     "11-1": "11-1",
     "11-2": "11-2",
     "11-3": "11-3",
