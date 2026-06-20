@@ -233,6 +233,7 @@ function initDashboard() {
   if (els.studentPersonalReportPdfBtn) els.studentPersonalReportPdfBtn.addEventListener("click", exportStudentPersonalReportPdf);
   if (els.studentPersonalReportContent) els.studentPersonalReportContent.addEventListener("click", handleStudentPersonalReportClick);
   if (els.studentTable) els.studentTable.addEventListener("click", handleStudentTablePdfClick);
+  if (els.individualContent) els.individualContent.addEventListener("click", handleStudentTablePdfClick);
   [els.group, els.section, els.areaFilter, els.student, els.from, els.to].filter(Boolean).forEach(input => input.addEventListener("change", renderDashboard));
   els.clear.addEventListener("click", () => {
     els.group.value = "";
@@ -2077,6 +2078,7 @@ function downloadStudentDashboardPdf(studentKey, sourceButton) {
   const pdfRecords = selectStudentPdfRecords(studentRecords);
   const latest = pdfRecords[0] || studentRecords[0];
 
+  const originalButtonText = sourceButton ? sourceButton.textContent : '';
   try {
     if (sourceButton) {
       sourceButton.disabled = true;
@@ -2093,7 +2095,7 @@ function downloadStudentDashboardPdf(studentKey, sourceButton) {
   } finally {
     if (sourceButton) {
       sourceButton.disabled = false;
-      sourceButton.textContent = 'Descargar PDF';
+      sourceButton.textContent = originalButtonText || 'Descargar PDF individual';
     }
   }
 }
